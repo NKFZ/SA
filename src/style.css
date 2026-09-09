@@ -1,0 +1,1330 @@
+/* ==========================================================================
+   EcoRecycle Figma Master Design System & Stylesheet
+   ========================================================================== */
+
+:root {
+  /* Figma Palette Tokens */
+  --bg-main: #f6f7ed;            /* Light Warm Cream (Figma background) */
+  --bg-card-white: #ffffff;
+  --navy-dark: #001f3f;          /* Figma Header & Dark Accent */
+  --navy-hover: #00152b;
+  --emerald-green: #00804c;       /* Figma Main Green Accent */
+  --light-green: #74c365;         /* Figma Fresh Plant Green */
+  --lime-accent: #dbe64c;         /* Figma Lime/Yellow Highlight */
+  --amber-orange: #e6964c;        /* Figma Queue/Status Orange */
+  --danger-red: #e64c4c;          /* Figma Hazardous/Warning Red */
+  --purple-accent: #5249c8;       /* Figma General Waste Purple */
+  --slate-subtle: #848484;
+
+  --text-dark: #0f172a;
+  --text-muted: #526071;
+  --text-white: #ffffff;
+
+  --border-green: rgba(0, 128, 76, 0.35);
+  --border-navy: #001f3f;
+
+  /* Figma Card Border Radii */
+  --radius-sm: 10px;
+  --radius-md: 20px;
+  --radius-lg: 32px;
+  --radius-pill: 50px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0 8px 24px rgba(0, 31, 63, 0.08);
+  --shadow-glow: 0 0 16px rgba(0, 128, 76, 0.2);
+  --shadow-heavy: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reset & Base Body */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', 'Prompt', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-dark);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+  padding-bottom: 84px; /* Space for Figma Bottom Nav */
+}
+
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 40px;
+  }
+}
+
+#app {
+  max-width: 480px; /* Mobile first canvas like Figma design */
+  margin: 0 auto;
+  background: var(--bg-main);
+  min-height: 100vh;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.1);
+}
+
+@media (min-width: 768px) {
+  #app {
+    max-width: 800px;
+    border-left: 1px solid rgba(0,0,0,0.05);
+    border-right: 1px solid rgba(0,0,0,0.05);
+  }
+}
+
+/* Typography */
+h1, h2, h3, h4 {
+  color: var(--navy-dark);
+  font-weight: 700;
+}
+
+/* Top App Header & Figma Role Switcher Bar */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-main);
+  border-bottom: 2px solid rgba(0, 31, 63, 0.1);
+  padding: 12px 16px;
+}
+
+.header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.brand-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--emerald-green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-glow);
+}
+
+.brand-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.role-tag-badge {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--emerald-green);
+}
+
+/* Role Selector Switcher Pill (Figma Switcher) */
+.role-switcher-container {
+  background: rgba(0, 31, 63, 0.06);
+  border: 2px solid var(--navy-dark);
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.role-option-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  font-family: inherit;
+  font-size: 0.775rem;
+  font-weight: 700;
+  color: var(--navy-dark);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--transition-fast);
+}
+
+.role-option-btn.active {
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  box-shadow: 0 2px 8px rgba(0, 31, 63, 0.3);
+}
+
+/* User Points Pill Header Bar */
+.user-points-strip {
+  background: var(--navy-dark);
+  color: var(--text-white);
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 16px 4px 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.points-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.points-amount {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--lime-accent);
+}
+
+/* Navigation Tabs (Figma Bottom Bar Style) */
+.bottom-nav-figma {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  background: var(--navy-dark);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 8px 12px 8px;
+  z-index: 1000;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+}
+
+@media (min-width: 768px) {
+  .bottom-nav-figma {
+    max-width: 800px;
+  }
+}
+
+.nav-tab-item {
+  background: transparent;
+  border: none;
+  color: var(--lime-accent);
+  opacity: 0.65;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  padding: 4px 8px;
+}
+
+.nav-tab-item i {
+  width: 22px;
+  height: 22px;
+}
+
+.nav-tab-item:hover, .nav-tab-item.active {
+  opacity: 1;
+  color: var(--lime-accent);
+  transform: translateY(-2px);
+}
+
+.nav-tab-item.active i {
+  stroke-width: 2.5px;
+}
+
+/* Views & Containers */
+.app-content {
+  padding: 12px 16px 24px 16px;
+}
+
+.view-section {
+  display: none;
+  animation: figmaFade 0.25s ease-out forwards;
+}
+
+.view-section.active {
+  display: block;
+}
+
+@keyframes figmaFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Figma Card Components */
+.figma-card {
+  background: var(--bg-card-white);
+  border: 3px solid var(--emerald-green);
+  border-radius: var(--radius-pill);
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+  position: relative;
+  overflow: hidden;
+}
+
+.figma-card-navy {
+  background: var(--navy-dark);
+  border: 3px solid var(--navy-dark);
+  border-radius: var(--radius-lg);
+  color: var(--text-white);
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-heavy);
+}
+
+/* Profile Card (Figma Style) */
+.user-profile-header-card {
+  background: var(--bg-card-white);
+  border: 3px solid var(--emerald-green);
+  border-radius: var(--radius-pill);
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.user-avatar-circle {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--emerald-green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 800;
+  border: 3px solid var(--navy-dark);
+}
+
+.user-info-text h3 {
+  font-size: 1.15rem;
+  color: var(--navy-dark);
+  margin-bottom: 2px;
+}
+
+.user-info-text p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Waste Categories Grid (Figma 4 Category Items) */
+.figma-section-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.waste-bags-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.waste-bag-item {
+  background: var(--bg-card-white);
+  border: 2px solid var(--navy-dark);
+  border-radius: 16px;
+  padding: 12px 6px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 100px;
+}
+
+.waste-bag-item .item-emoji {
+  font-size: 1.8rem;
+}
+
+.waste-bag-item .item-label {
+  font-size: 0.725rem;
+  font-weight: 700;
+  color: var(--navy-dark);
+  line-height: 1.2;
+}
+
+.waste-bag-item .item-val-badge {
+  font-size: 0.725rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  color: #fff;
+  width: 100%;
+}
+
+.bg-organic { background: var(--amber-orange); }
+.bg-general { background: var(--purple-accent); }
+.bg-recycle { background: var(--light-green); }
+.bg-hazardous { background: var(--danger-red); }
+
+/* Queue Card (Figma Costumer & Employee Queue) */
+.queue-status-card {
+  background: var(--navy-dark);
+  border-radius: 28px;
+  padding: 24px;
+  color: var(--text-white);
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.queue-header-date {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 8px;
+}
+
+.queue-number-val {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--amber-orange);
+  margin-bottom: 12px;
+}
+
+.queue-dot-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--amber-orange);
+  box-shadow: 0 0 10px var(--amber-orange);
+}
+
+.status-dot.active {
+  background: var(--light-green);
+  box-shadow: 0 0 10px var(--light-green);
+}
+
+.queue-est-time {
+  font-size: 1rem;
+  color: var(--lime-accent);
+  font-weight: 700;
+}
+
+/* Employee Queue List Item (Figma Waiting Queue) */
+.employee-queue-item {
+  background: var(--bg-card-white);
+  border: 3px solid var(--navy-dark);
+  border-radius: 32px;
+  padding: 18px 22px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.queue-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.queue-badge-tag {
+  background: var(--amber-orange);
+  color: var(--navy-dark);
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+}
+
+.user-detail-rows {
+  font-size: 0.9rem;
+  color: var(--navy-dark);
+  line-height: 1.6;
+}
+
+.user-detail-rows strong {
+  color: var(--emerald-green);
+}
+
+/* Figma Form Inputs (Employee Form) */
+.figma-form-item {
+  background: var(--bg-card-white);
+  border: 2px solid var(--navy-dark);
+  border-radius: 16px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.figma-form-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--navy-dark);
+}
+
+.dot-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.figma-input-box {
+  width: 70px;
+  padding: 6px;
+  border: 2px solid var(--navy-dark);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+}
+
+/* Figma Buttons */
+.btn-figma-primary {
+  background: var(--light-green);
+  border: 2px solid var(--navy-dark);
+  color: var(--navy-dark);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  padding: 12px 24px;
+  border-radius: 35px;
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 0 var(--navy-dark);
+  transition: var(--transition-fast);
+}
+
+.btn-figma-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 var(--navy-dark);
+}
+
+.btn-figma-primary:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--navy-dark);
+}
+
+.btn-figma-secondary {
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  border: 2px solid var(--navy-dark);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  padding: 10px 20px;
+  border-radius: 35px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Scanner & Camera (Figma Camera Frame) */
+.camera-viewfinder-figma {
+  width: 100%;
+  height: 320px;
+  background: #000;
+  border: 3px solid var(--navy-dark);
+  border-radius: 24px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+/* Rewards Grid (Figma Gift Cards) */
+.rewards-figma-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.reward-figma-card {
+  background: var(--bg-card-white);
+  border: 3px solid var(--emerald-green);
+  border-radius: 25px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: center;
+  transition: var(--transition-fast);
+}
+
+.reward-figma-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card);
+}
+
+.reward-emoji-large {
+  font-size: 2.8rem;
+  margin-bottom: 6px;
+}
+
+.reward-title-text {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+  margin-bottom: 6px;
+}
+
+.reward-points-cost {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--emerald-green);
+  margin-bottom: 10px;
+}
+
+.reward-points-cost.not-enough {
+  color: var(--danger-red);
+}
+
+/* Global Helpers & Toast */
+.hidden { display: none !important; }
+.margin-top-sm { margin-top: 8px; }
+.margin-top-md { margin-top: 16px; }
+.margin-top-lg { margin-top: 24px; }
+.text-center { text-align: center; }
+
+.toast-container {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  width: 90%;
+  max-width: 440px;
+}
+
+.toast {
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  border: 2px solid var(--emerald-green);
+  padding: 12px 18px;
+  border-radius: var(--radius-pill);
+  font-size: 0.875rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--shadow-heavy);
+  margin-bottom: 8px;
+}
+
+/* ==========================================================================
+   Login Screen Styles (Figma Clean Modal / Fullscreen)
+   ========================================================================== */
+.login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 31, 63, 0.75);
+  /* ไม่เบลอพื้นหลังตามคำขอ (No blur background) */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-card-figma {
+  background: var(--bg-main);
+  border: 3px solid var(--emerald-green);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow-heavy);
+  text-align: center;
+  animation: figmaFade 0.3s ease-out;
+}
+
+.login-logo-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--emerald-green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+  box-shadow: var(--shadow-glow);
+}
+
+.role-choice-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 20px 0 16px 0;
+}
+
+.role-choice-card {
+  border: 2px solid var(--navy-dark);
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  padding: 14px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--navy-dark);
+  transition: var(--transition-fast);
+}
+
+.role-choice-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+
+.role-choice-card.selected {
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  border-color: var(--navy-dark);
+  box-shadow: var(--shadow-card);
+}
+
+.role-choice-card i {
+  width: 28px;
+  height: 28px;
+}
+
+.login-input-field {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--navy-dark);
+  border-radius: var(--radius-pill);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--navy-dark);
+  background: #ffffff;
+  margin-top: 10px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.login-input-field:focus {
+  border-color: var(--emerald-green);
+  box-shadow: 0 0 0 3px rgba(0, 128, 76, 0.2);
+}
+
+/* Header Logout / User Switch Button */
+.btn-logout-pill {
+  border: 2px solid var(--navy-dark);
+  background: #ffffff;
+  color: var(--navy-dark);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(0, 31, 63, 0.08);
+  transition: var(--transition-fast);
+}
+
+.btn-logout-pill:hover {
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  border-color: var(--navy-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 31, 63, 0.18);
+}
+
+/* Reward Stock Badge */
+.reward-stock-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* ==========================================================================
+   Profile Avatar Upload & Waste Statistics Styling
+   ========================================================================== */
+.avatar-wrapper-relative {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.avatar-upload-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  border: 2px solid var(--emerald-green);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  box-shadow: var(--shadow-card);
+  transition: var(--transition-fast);
+}
+
+.avatar-upload-badge:hover {
+  transform: scale(1.15);
+  background: var(--emerald-green);
+  color: #fff;
+}
+
+.user-avatar-circle img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.stats-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.stat-category-box {
+  background: #ffffff;
+  border: 2px solid var(--navy-dark);
+  border-radius: 18px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.stat-category-box .stat-cat-emoji {
+  font-size: 1.8rem;
+}
+
+.stat-category-box .stat-cat-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--navy-dark);
+  display: block;
+}
+
+.stat-category-box .stat-cat-weight {
+  font-size: 1.1rem;
+  font-weight: 800;
+  display: block;
+}
+
+.total-weight-banner {
+  background: var(--navy-dark);
+  color: #ffffff;
+  border-radius: 20px;
+  padding: 16px;
+  text-align: center;
+  margin-top: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.total-weight-num {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--lime-accent);
+}
+
+/* ==========================================================================
+   Admin Dashboard & Blocks Styling (3 Blocks in One Single Page)
+   ========================================================================== */
+.admin-header-banner {
+  background: linear-gradient(135deg, var(--navy-dark) 0%, #1a365d 100%);
+  border: 2px solid var(--navy-dark);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 20px;
+}
+
+.admin-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(219, 230, 76, 0.18);
+  border: 1px solid var(--lime-accent);
+  color: var(--lime-accent);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.admin-block-card {
+  background: #ffffff;
+  border: 2px solid var(--navy-dark);
+  border-radius: 22px;
+  padding: 20px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-card);
+  transition: var(--transition-fast);
+}
+
+.admin-block-card:hover {
+  box-shadow: var(--shadow-heavy);
+}
+
+.admin-block-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(0, 31, 63, 0.08);
+}
+
+.admin-block-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1.5px solid currentColor;
+}
+
+.admin-block-header h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+}
+
+.admin-block-header p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Admin Block 1: Rewards Table & Inputs */
+.admin-rewards-table-wrapper {
+  overflow-x: auto;
+}
+
+.admin-reward-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 31, 63, 0.1);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  background: #fafafa;
+  flex-wrap: wrap;
+}
+
+.admin-reward-row:hover {
+  background: #f0fdf4;
+  border-color: var(--emerald-green);
+}
+
+.admin-reward-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.admin-reward-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.admin-inline-input {
+  width: 80px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--navy-dark);
+  border-radius: 8px;
+  font-family: inherit;
+  font-weight: 700;
+  text-align: center;
+}
+
+.btn-admin-save-sm {
+  background: var(--navy-dark);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--transition-fast);
+}
+
+.btn-admin-save-sm:hover {
+  background: var(--emerald-green);
+}
+
+.btn-admin-del-sm {
+  background: #fee2e2;
+  color: var(--danger-red);
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--transition-fast);
+}
+
+.btn-admin-del-sm:hover {
+  background: var(--danger-red);
+  color: #fff;
+}
+
+/* Admin Add Reward Box */
+.admin-add-reward-box {
+  background: #f8fafc;
+  border: 1.5px solid rgba(0, 31, 63, 0.15);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-form-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--navy-dark);
+  margin-bottom: 4px;
+}
+
+.admin-add-reward-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .admin-add-reward-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-upload-reward-icon {
+  background: #ffffff;
+  border: 2px solid var(--navy-dark);
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--navy-dark);
+  transition: var(--transition-fast);
+}
+
+.btn-upload-reward-icon:hover {
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+}
+
+.admin-img-preview-box {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.admin-img-preview-box img {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.btn-clear-preview {
+  background: none;
+  border: none;
+  color: var(--danger-red);
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* ==========================================================================
+   Rewards Pagination Styles (ข้อ 9: 6 ชิ้นต่อหน้า อยู่ข้างใต้ระหว่างกลาง)
+   ========================================================================== */
+.rewards-pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.rewards-pagination-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #ffffff;
+  border: 2px solid var(--navy-dark);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-card);
+}
+
+.btn-page-nav {
+  background: var(--navy-dark);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--transition-fast);
+}
+
+.btn-page-nav:hover:not(:disabled) {
+  background: var(--emerald-green);
+  transform: translateY(-1px);
+}
+
+.btn-page-nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.page-indicator-badge {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+  padding: 2px 8px;
+}
+
+.rewards-page-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.page-dot-item {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(0, 31, 63, 0.2);
+  transition: var(--transition-fast);
+  cursor: pointer;
+}
+
+.page-dot-item.active {
+  background: var(--emerald-green);
+  width: 20px;
+  border-radius: 8px;
+}
+
+/* Admin Block 2: Rates Grid */
+.admin-rates-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 540px) {
+  .admin-rates-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-rate-item {
+  border: 1.5px solid var(--navy-dark);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #fdfdfd;
+}
+
+.admin-rate-badge-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--navy-dark);
+  margin-bottom: 8px;
+}
+
+.admin-rate-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-unit-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Admin Block 3: Adjust Points & User Table */
+.admin-adjust-inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #f8fafc;
+  border: 1.5px solid rgba(0, 31, 63, 0.12);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.admin-users-table-container {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1.5px solid rgba(0, 31, 63, 0.15);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.admin-table th {
+  background: #f1f5f9;
+  color: var(--navy-dark);
+  padding: 10px 12px;
+  font-weight: 800;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  border-bottom: 2px solid rgba(0, 31, 63, 0.1);
+  z-index: 2;
+}
+
+.admin-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0, 31, 63, 0.06);
+  color: var(--text-dark);
+}
+
+.admin-table tr:hover td {
+  background: #f8fafc;
+}
+
+.btn-select-user-tag {
+  background: #e2e8f0;
+  color: var(--navy-dark);
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-select-user-tag:hover {
+  background: var(--navy-dark);
+  color: #fff;
+}
+
+.btn-refresh-sm {
+  background: none;
+  border: 1px solid rgba(0, 31, 63, 0.2);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--navy-dark);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-refresh-sm:hover {
+  background: #f1f5f9;
+}
+
+
+

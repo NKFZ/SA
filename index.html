@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoRecycle - เก็บขยะแลกแต้ม (SuperTrash DB)</title>
+  
+  <!-- Fonts: Inter & Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    
+    <!-- Top Header & Role Indicator (Figma Design) -->
+    <header class="app-header">
+      <div class="header-container">
+        <!-- Brand & Current Mode Indicator -->
+        <div class="brand-wrapper">
+          <div class="brand-logo-icon">
+            <i data-lucide="recycle"></i>
+          </div>
+          <div class="brand-title">
+            EcoRecycle <span class="role-tag-badge" id="header-role-badge">: SELLER</span>
+          </div>
+        </div>
+
+        <!-- Header Actions: Switch Account / Role -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn-logout-pill" id="btn-open-login" title="สลับบทบาท / สลับบัญชีผู้ใช้">
+            <i data-lucide="log-in"></i> สลับ
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- User Points Strip (Figma Points Header - ONLY FOR SELLER) -->
+    <div class="user-points-strip" id="user-points-strip-bar">
+      <div class="points-label">
+        <i data-lucide="coins" style="color: var(--lime-accent);"></i>
+        <span>แต้มสะสมของคุณ (<span id="user-display-name">ผู้ใช้</span>)</span>
+      </div>
+      <div class="points-amount" id="header-points-val">0</div>
+    </div>
+
+    <!-- Main Dynamic Content Views -->
+    <main class="app-content">
+
+      <!-- ===================================================================
+           SELLER VIEWS (มุมมองคนขายขยะ / คนเรียกพนักงาน)
+           =================================================================== -->
+      
+      <!-- Seller View 1: Home (Figma Costumer HomePage) -->
+      <section id="view-seller-home" class="view-section active">
+        <!-- User Profile Card -->
+        <div class="user-profile-header-card">
+          <div class="avatar-wrapper-relative" onclick="triggerProfileImageUpload()" title="กดเพื่อเปลี่ยนรูปโปรไฟล์">
+            <div class="user-avatar-circle" id="seller-avatar-initials">SL</div>
+            <div class="avatar-upload-badge">
+              <i data-lucide="camera" style="width:14px; height:14px;"></i>
+            </div>
+          </div>
+          <div class="user-info-text">
+            <h3 id="seller-name-val">กำลังโหลด...</h3>
+            <p>ID: <span id="seller-id-val">-</span> | Username: <span id="seller-username-val">-</span></p>
+            <p>เบอร์โทร: <span id="seller-phone-val">089-765-4321</span></p>
+          </div>
+        </div>
+
+        <!-- Hidden File Input for Avatar Upload -->
+        <input type="file" id="profile-image-file-input" accept="image/*" class="hidden" onchange="handleProfileImageSelected(event)" />
+
+        <!-- 4 Waste Categories (Figma Bags) -->
+        <div class="figma-section-title">
+          <i data-lucide="trash-2"></i> หมวดหมู่ขยะที่รับซื้อ & แลกแต้ม
+        </div>
+        <div class="waste-bags-grid">
+          <div class="waste-bag-item">
+            <div class="item-emoji">♻️</div>
+            <div class="item-label">Recycle Waste</div>
+            <div class="item-val-badge bg-recycle" id="badge-rate-recycle">50 แต้ม/kg</div>
+          </div>
+          <div class="waste-bag-item">
+            <div class="item-emoji">🍌</div>
+            <div class="item-label">Organic Waste</div>
+            <div class="item-val-badge bg-organic" id="badge-rate-organic">30 แต้ม/kg</div>
+          </div>
+          <div class="waste-bag-item">
+            <div class="item-emoji">📦</div>
+            <div class="item-label">General Waste</div>
+            <div class="item-val-badge bg-general" id="badge-rate-general">20 แต้ม/ถุง</div>
+          </div>
+          <div class="waste-bag-item">
+            <div class="item-emoji">☣️</div>
+            <div class="item-label">Hazardous Waste</div>
+            <div class="item-val-badge bg-hazardous" id="badge-rate-hazardous">80 แต้ม/ชิ้น</div>
+          </div>
+        </div>
+
+        <!-- Call Collector Quick Action -->
+        <div class="figma-card text-center">
+          <h3>ต้องการเรียกพนักงานมารับขยะ?</h3>
+          <p class="margin-top-sm" style="font-size:0.875rem; color:var(--text-muted);">
+            กดเรียกรถเก็บขยะเพื่อส่งพิกัดบ้านของคุณให้พนักงานเดินทางมารับถึงที่
+          </p>
+          <button class="btn-figma-primary margin-top-md" onclick="switchView('view-seller-queue')">
+            <i data-lucide="map-pin"></i> เรียกรถรับขยะถึงบ้าน
+          </button>
+        </div>
+
+        <!-- Recent Redemptions & Transactions -->
+        <div class="figma-section-title">
+          <i data-lucide="history"></i> ประวัติการแลกของรางวัลล่าสุด (Redemptions)
+        </div>
+        <div class="figma-card" style="padding:14px;" id="seller-recent-history-box">
+          <!-- Rendered by JS from DB redemptions -->
+        </div>
+      </section>
+
+      <!-- Seller View 2: Queue / Pickup (Figma Costumer Queue) -->
+      <section id="view-seller-queue" class="view-section">
+        <div class="figma-section-title">
+          <i data-lucide="calendar"></i> สถานะการเรียกรถรับซื้อขยะ
+        </div>
+
+        <!-- Queue Status Card (Figma Style) -->
+        <div class="queue-status-card">
+          <div class="queue-header-date" id="queue-date-display">📅 นัดหมาย: วันนี้ 10:30 น.</div>
+          <div class="queue-number-val" id="queue-no-display">Queue Number : A-090</div>
+          
+          <div class="queue-dot-status">
+            <div class="status-dot active"></div>
+            <span id="queue-status-text">Status: Waiting (กำลังรอพนักงาน)</span>
+          </div>
+
+          <div class="queue-est-time">
+            ⏱️ Estimated Time: 15 mins (พนักงานใกล้ถึงแล้ว)
+          </div>
+        </div>
+
+        <!-- Request Pickup Form (Connected to garbage_reports DB) -->
+        <div class="figma-card">
+          <h3>ส่งคำขอเรียกรถรับขยะใหม่</h3>
+          <form id="seller-pickup-form" class="margin-top-md" onsubmit="handleSellerPickupSubmit(event)">
+            <div class="figma-form-item">
+              <span class="figma-form-label">📍 ที่อยู่นัดหมาย:</span>
+              <input type="text" id="input-pickup-address" class="figma-input-box" style="width:200px;" value="45/2 ซอย 8 กรุงเทพฯ" required />
+            </div>
+            <div class="figma-form-item">
+              <span class="figma-form-label">📝 รายละเอียดขยะ:</span>
+              <input type="text" id="input-pickup-desc" class="figma-input-box" style="width:200px;" value="ขวดพลาสติก 3 ถุง ลังกระดาษ 5 kg" />
+            </div>
+            <div class="figma-form-item">
+              <span class="figma-form-label">📞 เบอร์โทรศัพท์:</span>
+              <input type="tel" id="input-pickup-phone" class="figma-input-box" style="width:140px;" value="089-765-4321" required />
+            </div>
+            <button type="submit" class="btn-figma-primary margin-top-md">
+              <i data-lucide="send"></i> ยืนยันเรียกรถรับขยะ (บันทึกลงระบบ)
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Seller View 3: Camera / Scanner (Figma Costumer Camera) -->
+      <section id="view-seller-camera" class="view-section">
+        <div class="figma-section-title text-center">
+          <i data-lucide="qr-code"></i> Find QR Code
+        </div>
+        <p class="text-center margin-top-sm" style="font-size:0.875rem; color:var(--text-muted); margin-bottom:16px;">
+          สแกน QR Code บนหน้าจอของพนักงานเก็บขยะ เพื่อสะสมแต้มเข้าบัญชีของคุณ
+        </p>
+
+        <!-- Video Scanner Stream Box -->
+        <div class="camera-viewfinder-figma">
+          <div id="qr-reader" style="width:100%;"></div>
+        </div>
+
+        <!-- Scanner Controls & Instant Simulator -->
+        <div class="figma-card text-center">
+          <div class="margin-top-sm">
+            <button class="btn-figma-secondary" id="btn-toggle-camera-seller">
+              <i data-lucide="camera"></i> เปิด/ปิด กล้องสแกน
+            </button>
+          </div>
+
+          <div style="margin-top:18px; padding-top:14px; border-top:2px dashed var(--navy-dark);">
+            <p style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">⚡ ทดสอบสแกน QR Code ในเครื่อง (Simulator)</p>
+            <button class="btn-figma-primary margin-top-md" id="btn-simulate-scan-seller">
+              <i data-lucide="zap"></i> จำลองสแกนขยะ +450 แต้ม (บันทึก DB)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seller View 4: Gift / Rewards Shop (Connected to DB rewards & redemptions) -->
+      <section id="view-seller-gift" class="view-section">
+        <div class="figma-section-title">
+          <i data-lucide="gift"></i> ร้านค้าแลกของรางวัล (Exchange Gift)
+        </div>
+        
+        <div class="rewards-figma-grid" id="seller-rewards-grid">
+          <!-- Rendered dynamically from DB rewards table (6 per page) -->
+        </div>
+
+        <!-- Rewards Pagination Controls (ข้อ 9: 6 ชิ้นต่อหน้า อยู่ข้างใต้ระหว่างกลางของของรางวัลทั้งสองชิ้นสุดท้าย) -->
+        <div id="rewards-pagination-container" class="rewards-pagination-wrapper">
+          <!-- Rendered dynamically -->
+        </div>
+
+        <!-- All Redemptions Table from DB -->
+        <div class="figma-card margin-top-lg">
+          <div class="figma-section-title">
+            <i data-lucide="check-circle-2"></i> ประวัติการแลกของรางวัลของคุณ (ตาราง Redemptions)
+          </div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-top:8px;">
+              <thead>
+                <tr style="border-bottom:2px solid var(--navy-dark); text-align:left;">
+                  <th style="padding:8px 4px;">รหัสแลก</th>
+                  <th style="padding:8px 4px;">ของรางวัล</th>
+                  <th style="padding:8px 4px;">แต้มที่ใช้</th>
+                  <th style="padding:8px 4px;">จำนวน</th>
+                  <th style="padding:8px 4px;">วันที่</th>
+                  <th style="padding:8px 4px;">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody id="redemptions-tbody">
+                <!-- Loaded from DB -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seller View 5: Profile & Waste Recycling Statistics (Figma Costumer Profile) -->
+      <section id="view-seller-profile" class="view-section">
+        <!-- User Profile Card with Photo Upload -->
+        <div class="user-profile-header-card">
+          <div class="avatar-wrapper-relative" onclick="triggerProfileImageUpload()" title="กดเพื่อเลือกรูปโปรไฟล์จากเครื่อง">
+            <div class="user-avatar-circle" id="profile-avatar-circle">SL</div>
+            <div class="avatar-upload-badge">
+              <i data-lucide="camera" style="width:14px; height:14px;"></i>
+            </div>
+          </div>
+          <div class="user-info-text">
+            <h3 id="profile-name-text">กำลังโหลด...</h3>
+            <p>ID: <span id="profile-id-text">1</span> | Email: <span id="profile-email-text">-</span></p>
+            <p style="color:var(--emerald-green); font-weight:800;" id="profile-points-badge">🏅 แต้มสะสม: 0 แต้ม</p>
+            <button type="button" class="btn-figma-secondary" style="padding:4px 10px; font-size:0.75rem; margin-top:6px;" onclick="triggerProfileImageUpload()">
+              <i data-lucide="image" style="width:14px; height:14px;"></i> เปลี่ยนรูปโปรไฟล์
+            </button>
+          </div>
+        </div>
+
+        <!-- Total Waste Stats Card (ข้อ 1: รวมกิโลกรัมทั้งหมด + แต่ละประเภทกี่กิโลกรัม) -->
+        <div class="figma-card">
+          <div class="figma-section-title" style="justify-content:center;">
+            <i data-lucide="scale"></i> สถิติการขายขยะรีไซเคิลสะสม
+          </div>
+          <p class="text-center" style="font-size:0.85rem; color:var(--text-muted);">
+            บันทึกปริมาณขยะที่คุณได้นำมารีไซเคิลทั้งหมด
+          </p>
+
+          <!-- Total KG Banner -->
+          <div class="total-weight-banner">
+            <div style="font-size:0.9rem; font-weight:600; opacity:0.9;">ขายขยะรวมทั้งหมด</div>
+            <div class="total-weight-num"><span id="stats-total-kg">0.0</span> kg</div>
+            <div style="font-size:0.8rem; color:var(--lime-accent);">จำนวนครั้งที่ขาย: <span id="stats-total-times">0</span> ครั้ง</div>
+          </div>
+
+          <!-- Category Breakdown Grid (4 หมวดหมู่) -->
+          <div class="stats-category-grid">
+            <div class="stat-category-box">
+              <div class="stat-cat-emoji">♻️</div>
+              <div>
+                <span class="stat-cat-name">Recycle Waste</span>
+                <span class="stat-cat-weight" style="color:var(--light-green);"><span id="stats-recycle-kg">0.0</span> kg</span>
+              </div>
+            </div>
+
+            <div class="stat-category-box">
+              <div class="stat-cat-emoji">🍌</div>
+              <div>
+                <span class="stat-cat-name">Organic Waste</span>
+                <span class="stat-cat-weight" style="color:var(--amber-orange);"><span id="stats-organic-kg">0.0</span> kg</span>
+              </div>
+            </div>
+
+            <div class="stat-category-box">
+              <div class="stat-cat-emoji">📦</div>
+              <div>
+                <span class="stat-cat-name">General Waste</span>
+                <span class="stat-cat-weight" style="color:var(--purple-accent);"><span id="stats-general-kg">0.0</span> kg</span>
+              </div>
+            </div>
+
+            <div class="stat-category-box">
+              <div class="stat-cat-emoji">☣️</div>
+              <div>
+                <span class="stat-cat-name">Hazardous Waste</span>
+                <span class="stat-cat-weight" style="color:var(--danger-red);"><span id="stats-hazardous-kg">0.0</span> kg</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- World Saving Analytics Card -->
+        <div class="figma-card">
+          <h3 class="text-center">World Saving Statistics</h3>
+          <p class="text-center" style="font-size:0.85rem; color:var(--text-muted);">2025 - 2026</p>
+          
+          <div class="margin-top-md text-center">
+            <h2 style="color:var(--emerald-green); font-size:2rem;" id="profile-co2-val">0.0 kg</h2>
+            <p style="font-weight:700;">ปริมาณคาร์บอนที่ช่วยลดได้ (CO2 Saved)</p>
+            <p class="margin-top-sm" style="font-size:0.85rem; color:var(--emerald-green); font-weight:800;">
+              ✨ You are doing good! You almost saved the world! 🌳
+            </p>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ===================================================================
+           EMPLOYEE VIEWS (มุมมองพนักงานรับซื้อขยะ / คนประเมินขยะ)
+           - ไม่มีคะแนนสำหรับพนักงาน -
+           =================================================================== -->
+
+      <!-- Employee View 1: Waiting Queue (Figma Employee HomePage) -->
+      <section id="view-employee-home" class="view-section">
+        <!-- Staff Info Banner (NO POINTS SHOWN) -->
+        <div class="figma-card" style="background:var(--navy-dark); color:#fff; border-color:var(--navy-dark);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:0.8rem; color:var(--lime-accent); font-weight:700;">👷‍♂️ พนักงานปฏิบัติการ</div>
+              <h3 style="color:#fff;" id="staff-name-banner">สมชาย เก็บขยะ (EMP-8821)</h3>
+              <p style="font-size:0.8rem; color:rgba(255,255,255,0.7);">สถานะ: พร้อมรับงานเก็บขยะ</p>
+            </div>
+            <div style="text-align:right;">
+              <span class="queue-badge-tag" style="background:var(--lime-accent); color:var(--navy-dark);">ปฏิบัติหน้าที่</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="figma-section-title">
+          <i data-lucide="list"></i> รายการคำขอรับซื้อขยะในระบบ (Waiting Queue)
+        </div>
+
+        <!-- Waiting Queue Cards List from DB garbage_reports -->
+        <div id="employee-queue-cards-container">
+          <!-- Loaded dynamically from DB -->
+        </div>
+      </section>
+
+      <!-- Employee View 2: Form Evaluation (Figma Employee Form) -->
+      <section id="view-employee-form" class="view-section">
+        <div class="figma-section-title">
+          <i data-lucide="edit-3"></i> กรอกประเมินขยะ 4 ประเภท (Form)
+        </div>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:14px;">
+          ลูกค้าที่กำลังให้บริการ: <strong id="form-customer-name-display" style="color:var(--navy-dark);">Sek Loso (User #1)</strong>
+        </p>
+
+        <!-- 4 Waste Inputs (Figma Style) -->
+        <div class="figma-form-item">
+          <div class="figma-form-label">
+            <div class="dot-indicator bg-recycle"></div>
+            <span>Recycle Waste (KG)</span>
+          </div>
+          <div>
+            <input type="number" id="emp-input-recycle" class="figma-input-box" value="2.5" step="0.5" min="0" onchange="calcEmpTotals()" />
+            <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">KG</span>
+          </div>
+        </div>
+
+        <div class="figma-form-item">
+          <div class="figma-form-label">
+            <div class="dot-indicator bg-organic"></div>
+            <span>Organic Waste (KG)</span>
+          </div>
+          <div>
+            <input type="number" id="emp-input-organic" class="figma-input-box" value="1.0" step="0.5" min="0" onchange="calcEmpTotals()" />
+            <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">KG</span>
+          </div>
+        </div>
+
+        <div class="figma-form-item">
+          <div class="figma-form-label">
+            <div class="dot-indicator bg-general"></div>
+            <span>General Waste (Bags)</span>
+          </div>
+          <div>
+            <input type="number" id="emp-input-general" class="figma-input-box" value="3" step="1" min="0" onchange="calcEmpTotals()" />
+            <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">Bags</span>
+          </div>
+        </div>
+
+        <div class="figma-form-item">
+          <div class="figma-form-label">
+            <div class="dot-indicator bg-hazardous"></div>
+            <span>Hazardous Waste (Items)</span>
+          </div>
+          <div>
+            <input type="number" id="emp-input-hazardous" class="figma-input-box" value="2" step="1" min="0" onchange="calcEmpTotals()" />
+            <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">Items</span>
+          </div>
+        </div>
+
+        <!-- Total Score Box (Calculated for Customer - ข้อ 3: ลูกค้าได้เฉพาะแต้ม ไม่มีเงิน) -->
+        <div class="figma-card text-center" style="margin-top:16px;">
+          <div style="font-size:0.9rem; font-weight:700; color:var(--navy-dark);">แต้มสะสมที่ลูกค้าจะได้รับ (Points Only):</div>
+          <h1 style="color:var(--emerald-green); font-size:2.4rem;" id="emp-total-score-display">375 แต้ม</h1>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">✨ สะสมแต้มอย่างเดียวเพื่อนำไปแลกของรางวัล</p>
+        </div>
+
+        <button class="btn-figma-primary" id="btn-emp-generate-qr">
+          <i data-lucide="qr-code"></i> Generate QR Code
+        </button>
+      </section>
+
+      <!-- Employee View 3: QR Code Display (Figma Employee QR) -->
+      <section id="view-employee-qr" class="view-section">
+        <div class="figma-section-title text-center">
+          <i data-lucide="qr-code"></i> Scan the QR code
+        </div>
+
+        <!-- Timer -->
+        <div class="text-center margin-top-sm" style="font-weight:700; color:var(--slate-subtle); font-size:1rem;">
+          ⏱️ Timer: <span id="emp-qr-timer-text" style="color:var(--navy-dark);">05min 00s</span>
+        </div>
+
+        <!-- QR Display Canvas -->
+        <div class="figma-card text-center margin-top-md" style="background:#fff; padding:24px;">
+          <canvas id="generated-qr-canvas" style="width:220px !important; height:220px !important; margin:0 auto;"></canvas>
+          <div id="generated-qr-code-id" style="font-family:monospace; font-weight:800; margin-top:8px;">TX-98421</div>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">ยื่นหน้าจอนี้ให้ผู้ขายใช้กล้องสแกนรับแต้ม</p>
+          
+          <button class="btn-figma-secondary margin-top-md" id="btn-emp-auto-transfer">
+            <i data-lucide="zap"></i> ทดสอบอนุมัติโอนแต้มให้ลูกค้าทันที
+          </button>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           ADMIN VIEW (มุมมองผู้ดูแลระบบ: แดชบอร์ด 3 บล็อกในหน้าเดียว)
+           =================================================================== -->
+      <section id="view-admin-dashboard" class="view-section">
+        <div class="admin-header-banner">
+          <div>
+            <div class="admin-badge-pill"><i data-lucide="shield-check"></i> Super Administrator</div>
+            <h2 style="color:#fff; margin-top:6px; font-size:1.35rem;">แผงควบคุมระบบ (Admin Dashboard)</h2>
+            <p style="color:rgba(255,255,255,0.8); font-size:0.8rem; margin-top:2px;">
+              จัดการระบบ จัดสรรของรางวัล อัตราแลกเปลี่ยนแต้ม และจัดการข้อมูลผู้ใช้แบบ Realtime
+            </p>
+          </div>
+        </div>
+
+        <!-- บล็อกที่ 1: จัดการของรางวัล (Reward Stock, Points, & Add Reward) -->
+        <div class="admin-block-card">
+          <div class="admin-block-header">
+            <div class="admin-block-icon" style="background:#e0f2fe; color:#0369a1;">
+              <i data-lucide="gift"></i>
+            </div>
+            <div>
+              <h3>บล็อกที่ 1: จัดการของรางวัล & เพิ่มของรางวัลใหม่</h3>
+              <p>ปรับจำนวนสต็อกคงเหลือ แต้มที่ต้องใช้แลก และเพิ่มของรางวัลชิ้นใหม่ให้ผู้ใช้ทุกคนแลกได้</p>
+            </div>
+          </div>
+
+          <!-- ฟอร์มเพิ่มของรางวัลใหม่ (ข้อ 8) -->
+          <div class="admin-add-reward-box">
+            <div style="font-weight:800; font-size:0.9rem; color:var(--navy-dark); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <i data-lucide="plus-circle" style="width:18px; height:18px; color:var(--emerald-green);"></i>
+              เพิ่มของรางวัลใหม่เข้าสู่ระบบ
+            </div>
+            <form id="admin-add-reward-form" onsubmit="handleAdminAddReward(event)">
+              <div class="admin-add-reward-grid">
+                <div>
+                  <label class="admin-form-label">ชื่อของรางวัล <span style="color:var(--danger-red);">*</span>:</label>
+                  <input type="text" id="admin-new-reward-name" class="figma-input-box" placeholder="เช่น แก้วเก็บความเย็น, Gift Card" required />
+                </div>
+                <div>
+                  <label class="admin-form-label">จำนวนสต็อก <span style="color:var(--danger-red);">*</span>:</label>
+                  <input type="number" min="0" id="admin-new-reward-stock" class="figma-input-box" placeholder="เช่น 20" required />
+                </div>
+                <div>
+                  <label class="admin-form-label">แต้มที่ต้องใช้แลก <span style="color:var(--danger-red);">*</span>:</label>
+                  <input type="number" min="1" id="admin-new-reward-points" class="figma-input-box" placeholder="เช่น 800" required />
+                </div>
+                <div>
+                  <label class="admin-form-label">รูปภาพของรางวัล (Emoji หรือ URL หรือ อัปโหลดรูป) <span style="color:var(--danger-red);">*</span>:</label>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" id="admin-new-reward-image" class="figma-input-box" style="flex:1;" placeholder="เช่น 🎁, 🎒, ☕ หรือ URL รูปภาพ" required />
+                    <button type="button" class="btn-upload-reward-icon" onclick="document.getElementById('admin-reward-file-input').click()" title="อัปโหลดรูปภาพจากเครื่อง">
+                      <i data-lucide="image" style="width:16px; height:16px;"></i>
+                    </button>
+                    <input type="file" id="admin-reward-file-input" accept="image/*" class="hidden" onchange="handleAdminRewardImageUploaded(event)" />
+                  </div>
+                  <!-- Preview Box -->
+                  <div id="admin-reward-img-preview" class="admin-img-preview-box hidden">
+                    <span id="admin-reward-preview-val"></span>
+                    <button type="button" class="btn-clear-preview" onclick="clearAdminRewardImage()">×</button>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+                <button type="submit" class="btn-figma-primary" style="width:auto; padding:8px 22px;">
+                  <i data-lucide="plus"></i> เพิ่มของรางวัลนี้
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- รายการของรางวัลปัจจุบัน & ปรับสต็อก/แต้ม -->
+          <div style="font-weight:800; font-size:0.85rem; color:var(--navy-dark); margin:18px 0 10px 0; display:flex; justify-content:space-between; align-items:center;">
+            <span><i data-lucide="list" style="width:16px; height:16px; vertical-align:middle;"></i> รายการของรางวัลทั้งหมดในระบบ</span>
+            <span id="admin-rewards-total-count" style="color:var(--text-muted); font-size:0.8rem;">0 รายการ</span>
+          </div>
+          <div id="admin-rewards-list" class="admin-rewards-table-wrapper">
+            <div style="text-align:center; padding:16px; color:var(--text-muted);">กำลังโหลดรายการของรางวัล...</div>
+          </div>
+        </div>
+
+        <!-- บล็อกที่ 2: ปรับตัวคูณของขยะ 4 ประเภท (Waste Multipliers) -->
+        <div class="admin-block-card">
+          <div class="admin-block-header">
+            <div class="admin-block-icon" style="background:#dcfce7; color:#15803d;">
+              <i data-lucide="calculator"></i>
+            </div>
+            <div>
+              <h3>บล็อกที่ 2: ปรับตัวคูณแต้มขยะ 4 ประเภท</h3>
+              <p>กำหนดแต้ม/หน่วย ของขยะแต่ละประเภท ระบบจะอัปเดตทั้งฝั่งพนักงานและคนขายทันที</p>
+            </div>
+          </div>
+
+          <form id="admin-rates-form" onsubmit="handleSaveWasteRates(event)">
+            <div class="admin-rates-grid">
+              <div class="admin-rate-item">
+                <div class="admin-rate-badge-title">
+                  <span class="dot-indicator bg-recycle"></span>
+                  <span>Recycle Waste (ขยะรีไซเคิล)</span>
+                </div>
+                <div class="admin-rate-input-row">
+                  <input type="number" step="1" min="1" id="admin-rate-recycle" class="figma-input-box" required />
+                  <span class="admin-unit-label">แต้ม / กก.</span>
+                </div>
+              </div>
+
+              <div class="admin-rate-item">
+                <div class="admin-rate-badge-title">
+                  <span class="dot-indicator bg-organic"></span>
+                  <span>Organic Waste (ขยะเปียก/อินทรีย์)</span>
+                </div>
+                <div class="admin-rate-input-row">
+                  <input type="number" step="1" min="1" id="admin-rate-organic" class="figma-input-box" required />
+                  <span class="admin-unit-label">แต้ม / กก.</span>
+                </div>
+              </div>
+
+              <div class="admin-rate-item">
+                <div class="admin-rate-badge-title">
+                  <span class="dot-indicator bg-general"></span>
+                  <span>General Waste (ขยะทั่วไป)</span>
+                </div>
+                <div class="admin-rate-input-row">
+                  <input type="number" step="1" min="1" id="admin-rate-general" class="figma-input-box" required />
+                  <span class="admin-unit-label">แต้ม / ถุง</span>
+                </div>
+              </div>
+
+              <div class="admin-rate-item">
+                <div class="admin-rate-badge-title">
+                  <span class="dot-indicator bg-hazardous"></span>
+                  <span>Hazardous Waste (ขยะอันตราย)</span>
+                </div>
+                <div class="admin-rate-input-row">
+                  <input type="number" step="1" min="1" id="admin-rate-hazardous" class="figma-input-box" required />
+                  <span class="admin-unit-label">แต้ม / ชิ้น</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+              <button type="submit" class="btn-figma-primary" style="width:auto; padding:10px 24px;">
+                <i data-lucide="save"></i> บันทึกอัตราตัวคูณขยะลงฐานข้อมูล
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- บล็อกที่ 3: จัดการและปรับคะแนน User แต่ละคน (Adjust User Points) -->
+        <div class="admin-block-card">
+          <div class="admin-block-header">
+            <div class="admin-block-icon" style="background:#fef3c7; color:#b45309;">
+              <i data-lucide="user-check"></i>
+            </div>
+            <div>
+              <h3>บล็อกที่ 3: ปรับคะแนนผู้ใช้งาน (Adjust User Points)</h3>
+              <p>ค้นหาหรือกรอกชื่อผู้ใช้ และระบุแต้มที่ต้องการกำหนดหรือบวกเพิ่ม</p>
+            </div>
+          </div>
+
+          <!-- Adjust Points Form -->
+          <form id="admin-adjust-points-form" onsubmit="handleAdminAdjustPoints(event)" class="admin-adjust-form">
+            <div class="admin-adjust-inputs">
+              <div style="flex: 1; min-width: 180px;">
+                <label style="font-size:0.8rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+                  ชื่อผู้ใช้ หรือ User ID:
+                </label>
+                <input type="text" id="admin-input-target-user" class="figma-input-box" placeholder="เช่น testuser หรือ สมชาย หรือ 1" required style="width:100%;" />
+              </div>
+
+              <div style="width: 140px;">
+                <label style="font-size:0.8rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+                  รูปแบบการปรับ:
+                </label>
+                <select id="admin-select-mode" class="figma-input-box" style="width:100%; height:44px;">
+                  <option value="set">ตั้งค่าเป็น (=)</option>
+                  <option value="add">บวกเพิ่ม (+)</option>
+                </select>
+              </div>
+
+              <div style="width: 140px;">
+                <label style="font-size:0.8rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+                  จำนวนคะแนน:
+                </label>
+                <input type="number" id="admin-input-new-points" class="figma-input-box" placeholder="เช่น 1500" required style="width:100%;" />
+              </div>
+
+              <div style="display:flex; align-items:flex-end;">
+                <button type="submit" class="btn-figma-primary" style="height:44px; padding:0 20px; white-space:nowrap;">
+                  <i data-lucide="check"></i> บันทึกแต้ม
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <!-- User Directory Table with Quick Pick -->
+          <div style="margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">
+                <i data-lucide="users" style="width:16px; height:16px; vertical-align:middle;"></i> รายชื่อผู้ใช้ทั้งหมดในฐานข้อมูล
+              </span>
+              <button type="button" class="btn-refresh-sm" onclick="loadAdminUsersList()">
+                <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> รีเฟรช
+              </button>
+            </div>
+            <div class="admin-users-table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>ชื่อผู้ใช้</th>
+                    <th>อีเมล / เบอร์โทร</th>
+                    <th style="text-align:right;">คะแนนปัจจุบัน</th>
+                    <th style="text-align:center;">การจัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-tbody">
+                  <tr><td colspan="5" style="text-align:center; padding:16px;">กำลังโหลดรายชื่อผู้ใช้...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Figma Bottom Navigation Bar -->
+    <nav class="bottom-nav-figma">
+      <!-- Seller Nav Tabs -->
+      <div id="nav-group-seller" style="display:flex; width:100%; justify-content:space-around;">
+        <button class="nav-tab-item active" data-target="view-seller-home">
+          <i data-lucide="home"></i>
+          <span>Home</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-seller-queue">
+          <i data-lucide="calendar"></i>
+          <span>Queue</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-seller-camera">
+          <i data-lucide="camera"></i>
+          <span>Camera</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-seller-gift">
+          <i data-lucide="gift"></i>
+          <span>Gift</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-seller-profile">
+          <i data-lucide="user"></i>
+          <span>Profile</span>
+        </button>
+      </div>
+
+      <!-- Employee Nav Tabs (Hidden when in Seller Mode) -->
+      <div id="nav-group-employee" style="display:none; width:100%; justify-content:space-around;">
+        <button class="nav-tab-item active" data-target="view-employee-home">
+          <i data-lucide="home"></i>
+          <span>Home</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-employee-form">
+          <i data-lucide="file-text"></i>
+          <span>Form</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-employee-qr">
+          <i data-lucide="qr-code"></i>
+          <span>QR Code</span>
+        </button>
+      </div>
+
+      <!-- Admin Nav Tabs (Shown when in Admin Mode) -->
+      <div id="nav-group-admin" style="display:none; width:100%; justify-content:space-around;">
+        <button class="nav-tab-item active" data-target="view-admin-dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Admin Dashboard</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Simple Login Modal / Screen Overlay (ข้อ 2: เลือกว่าฝั่งไหน + กรอกชื่อ) -->
+    <div id="login-modal-overlay" class="login-overlay hidden">
+      <div class="login-card-figma">
+        <div class="login-logo-circle">
+          <i data-lucide="recycle" style="width:36px; height:36px;"></i>
+        </div>
+        <h2>เข้าสู่ระบบ EcoRecycle</h2>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">
+          กรุณาเลือกประเภทผู้ใช้งาน และกรอกชื่อเพื่อเข้าใช้งาน (ไม่ต้องใส่รหัสผ่าน)
+        </p>
+
+        <!-- Role Choice Buttons -->
+        <div class="role-choice-group">
+          <div class="role-choice-card selected" id="login-choice-seller" onclick="selectLoginRole('seller')">
+            <i data-lucide="user"></i>
+            <span>คนขายขยะ (Seller)</span>
+          </div>
+          <div class="role-choice-card" id="login-choice-staff" onclick="selectLoginRole('staff')">
+            <i data-lucide="truck"></i>
+            <span>พนักงาน (Staff)</span>
+          </div>
+          <div class="role-choice-card" id="login-choice-admin" onclick="selectLoginRole('admin')">
+            <i data-lucide="shield"></i>
+            <span>ผู้ดูแล (Admin)</span>
+          </div>
+        </div>
+
+        <!-- Name Input Form -->
+        <form id="login-form" onsubmit="handleLoginSubmit(event)" style="text-align:left;">
+          <label id="login-name-label" style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">
+            ชื่อคนขายขยะ (Username / Name):
+          </label>
+          <input type="text" id="login-input-name" class="login-input-field" placeholder="เช่น testuser หรือ สมชาย" required />
+
+          <button type="submit" class="btn-figma-primary margin-top-lg">
+            <i data-lucide="log-in"></i> เข้าใช้งานทันที
+          </button>
+        </form>
+
+        <button type="button" class="btn-figma-secondary margin-top-md" style="font-size:0.8rem; padding:6px 14px;" onclick="closeLoginModal()">
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+
+    <!-- Global Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

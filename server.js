@@ -1,0 +1,629 @@
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import dotenv from 'dotenv';
+import { createClient } from '@libsql/client';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// Turso LibSQL Database Client
+const dbUrl = process.env.TURSO_DATABASE_URL || 'file:DB/supertrash.db';
+const authToken = process.env.TURSO_AUTH_TOKEN;
+
+console.log('[Server] Connecting to database:', dbUrl.startsWith('libsql://') ? 'Turso Cloud' : dbUrl);
+
+const db = createClient({
+  url: dbUrl,
+  authToken: authToken
+});
+
+// Helper functions for LibSQL queries
+async function queryOne(sql, args = []) {
+  const result = await db.execute({ sql, args });
+  return result.rows[0] || null;
+}
+
+async function queryAll(sql, args = []) {
+  const result = await db.execute({ sql, args });
+  return result.rows;
+}
+
+async function execute(sql, args = []) {
+  return await db.execute({ sql, args });
+}
+
+// -------------------------------------------------------------
+// Initialize missing tables / seed default rows if needed
+// -------------------------------------------------------------
+async function initDatabase() {
+  try {
+    await db.batch([
+      `CREATE TABLE IF NOT EXISTS waste_history (
+        history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        recycle_kg REAL DEFAULT 0,
+        organic_kg REAL DEFAULT 0,
+        general_kg REAL DEFAULT 0,
+        hazardous_kg REAL DEFAULT 0,
+        total_kg REAL DEFAULT 0,
+        points_earned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY(user_id) REFERENCES user(user_id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS admins (
+        admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_name TEXT NOT NULL UNIQUE,
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS waste_rates (
+        category_key TEXT PRIMARY KEY,
+        category_name TEXT NOT NULL,
+        points_per_unit REAL NOT NULL,
+        unit_name TEXT NOT NULL
+      )`
+    ]);
+
+    // Check waste_rates
+    const ratesCountRes = await queryOne('SELECT COUNT(*) as count FROM waste_rates');
+    if (!ratesCountRes || ratesCountRes.count === 0) {
+      await db.batch([
+        { sql: "INSERT INTO waste_rates (category_key, category_name, points_per_unit, unit_name) VALUES (?, ?, ?, ?)", args: ['recycle', 'Recycle Waste', 50, 'kg'] },
+        { sql: "INSERT INTO waste_rates (category_key, category_name, points_per_unit, unit_name) VALUES (?, ?, ?, ?)", args: ['organic', 'Organic Waste', 30, 'kg'] },
+        { sql: "INSERT INTO waste_rates (category_key, category_name, points_per_unit, unit_name) VALUES (?, ?, ?, ?)", args: ['general', 'General Waste', 20, 'ถุง'] },
+        { sql: "INSERT INTO waste_rates (category_key, category_name, points_per_unit, unit_name) VALUES (?, ?, ?, ?)", args: ['hazardous', 'Hazardous Waste', 80, 'ชิ้น'] }
+      ]);
+    }
+
+    // Check sample admin
+    const adminCountRes = await queryOne('SELECT COUNT(*) as count FROM admins');
+    if (!adminCountRes || adminCountRes.count === 0) {
+      await execute("INSERT INTO admins (admin_name) VALUES (?)", ['Admin (ผู้ดูแลระบบ)']);
+    }
+
+    console.log('[Server] Database initialized successfully.');
+  } catch (err) {
+    console.error('[Server] Database initialization warning:', err.message);
+  }
+}
+
+// -------------------------------------------------------------
+// API ENDPOINTS
+// -------------------------------------------------------------
+
+// 1. LOGIN / USER (Seller)
+app.post('/api/login/seller', async (req, res) => {
+  try {
+    const { name } = req.body;
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      return res.status(400).json({ error: 'กรุณากรอกชื่อ' });
+    }
+
+    const existingStaff = await queryOne('SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)', [trimmed]);
+    if (existingStaff) {
+      return res.status(403).json({ 
+        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "พนักงาน (Staff)" แล้ว ไม่สามารถเข้าใช้งานเป็นคนขายขยะได้` 
+      });
+    }
+
+    const existingAdmin = await queryOne('SELECT * FROM admins WHERE LOWER(admin_name) = LOWER(?)', [trimmed]);
+    if (existingAdmin) {
+      return res.status(403).json({ 
+        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "ผู้ดูแลระบบ (Admin)" แล้ว ไม่สามารถเข้าใช้งานเป็นคนขายขยะได้` 
+      });
+    }
+
+    let user = await queryOne('SELECT * FROM user WHERE username = ? OR name = ?', [trimmed, trimmed]);
+    if (!user) {
+      const insertRes = await execute(
+        'INSERT INTO user (username, name, email, phone, points) VALUES (?, ?, ?, ?, ?)',
+        [trimmed, trimmed, `${trimmed.toLowerCase()}@eco.com`, '089-765-4321', 670]
+      );
+      user = await queryOne('SELECT * FROM user WHERE user_id = ?', [Number(insertRes.lastInsertRowid)]);
+    }
+
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. LOGIN / STAFF (Employee)
+app.post('/api/login/staff', async (req, res) => {
+  try {
+    const { name } = req.body;
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      return res.status(400).json({ error: 'กรุณากรอกชื่อ' });
+    }
+
+    const existingUser = await queryOne('SELECT * FROM user WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?)', [trimmed, trimmed]);
+    if (existingUser) {
+      return res.status(403).json({ 
+        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "คนขายขยะ (Seller)" แล้ว ไม่สามารถเข้าใช้งานเป็นพนักงานได้` 
+      });
+    }
+
+    const existingAdmin = await queryOne('SELECT * FROM admins WHERE LOWER(admin_name) = LOWER(?)', [trimmed]);
+    if (existingAdmin) {
+      return res.status(403).json({ 
+        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "ผู้ดูแลระบบ (Admin)" แล้ว ไม่สามารถเข้าใช้งานเป็นพนักงานได้` 
+      });
+    }
+
+    let staff = await queryOne('SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)', [trimmed]);
+    if (!staff) {
+      const insertRes = await execute('INSERT INTO staffs (staff_name, phone) VALUES (?, ?)', [trimmed, '081-999-8888']);
+      staff = await queryOne('SELECT * FROM staffs WHERE staff_id = ?', [Number(insertRes.lastInsertRowid)]);
+    }
+
+    res.json({ staff });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2.1 LOGIN / ADMIN
+app.post('/api/login/admin', async (req, res) => {
+  try {
+    const { name } = req.body;
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ดูแลระบบ' });
+    }
+
+    const existingUser = await queryOne('SELECT * FROM user WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?)', [trimmed, trimmed]);
+    if (existingUser) {
+      return res.status(403).json({ 
+        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "คนขายขยะ (Seller)" แล้ว ไม่สามารถเข้าใช้งานเป็นแอดมินได้` 
+      });
+    }
+
+    const existingStaff = await queryOne('SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)', [trimmed]);
+    if (existingStaff) {
+      return res.status(403).json({ 
+        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "พนักงาน (Staff)" แล้ว ไม่สามารถเข้าใช้งานเป็นแอดมินได้` 
+      });
+    }
+
+    let admin = await queryOne('SELECT * FROM admins WHERE LOWER(admin_name) = LOWER(?)', [trimmed]);
+    if (!admin) {
+      const insertRes = await execute('INSERT INTO admins (admin_name) VALUES (?)', [trimmed]);
+      admin = await queryOne('SELECT * FROM admins WHERE admin_id = ?', [Number(insertRes.lastInsertRowid)]);
+    }
+
+    res.json({ admin });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. GET USER INFO
+app.get('/api/user/:id', async (req, res) => {
+  try {
+    const user = await queryOne('SELECT * FROM user WHERE user_id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3.1 UPDATE PROFILE IMAGE
+app.post('/api/user/profile-image', async (req, res) => {
+  try {
+    const { userId, imageBase64 } = req.body;
+    if (!userId || !imageBase64) {
+      return res.status(400).json({ error: 'Missing userId or image' });
+    }
+
+    await execute('UPDATE user SET profile_image = ? WHERE user_id = ?', [imageBase64, userId]);
+    const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3.2 GET USER WASTE STATS
+app.get('/api/user-stats/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const stats = await queryOne(`
+      SELECT 
+        COALESCE(SUM(recycle_kg), 0) as recycle_kg,
+        COALESCE(SUM(organic_kg), 0) as organic_kg,
+        COALESCE(SUM(general_kg), 0) as general_kg,
+        COALESCE(SUM(hazardous_kg), 0) as hazardous_kg,
+        COALESCE(SUM(total_kg), 0) as total_kg,
+        COUNT(*) as total_times
+      FROM waste_history
+      WHERE user_id = ?
+    `, [userId]);
+
+    const recentHistory = await queryAll(`
+      SELECT * FROM waste_history 
+      WHERE user_id = ? 
+      ORDER BY history_id DESC 
+      LIMIT 10
+    `, [userId]);
+
+    res.json({ stats, recentHistory });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. GET REWARDS
+app.get('/api/rewards', async (req, res) => {
+  try {
+    const rewards = await queryAll('SELECT * FROM rewards ORDER BY point_required ASC');
+    res.json({ rewards });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4.1 ADMIN: UPDATE REWARD
+app.post('/api/admin/rewards/update', async (req, res) => {
+  try {
+    const { rewardId, stock, pointRequired } = req.body;
+    if (!rewardId) {
+      return res.status(400).json({ error: 'Missing rewardId' });
+    }
+
+    const current = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [rewardId]);
+    if (!current) return res.status(404).json({ error: 'Reward not found' });
+
+    const newStock = stock !== undefined ? parseInt(stock) : current.stock;
+    const newPoints = pointRequired !== undefined ? parseInt(pointRequired) : current.point_required;
+
+    await execute('UPDATE rewards SET stock = ?, point_required = ? WHERE reward_id = ?', [newStock, newPoints, rewardId]);
+    const updated = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [rewardId]);
+
+    res.json({ 
+      success: true, 
+      reward: updated, 
+      message: `อัปเดต "${updated.reward_name}" เรียบร้อยแล้ว (สต็อก: ${newStock})` 
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4.2 ADMIN: ADD NEW REWARD
+app.post('/api/admin/rewards/add', async (req, res) => {
+  try {
+    const { name, stock, pointRequired, image } = req.body;
+    const trimmedName = (name || '').trim();
+    const trimmedImage = (image || '').trim();
+    const numStock = parseInt(stock);
+    const numPoints = parseInt(pointRequired);
+
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'กรุณาระบุชื่อของรางวัล' });
+    }
+    if (isNaN(numStock) || numStock < 0) {
+      return res.status(400).json({ error: 'กรุณาระบุจำนวนสต็อกให้ถูกต้อง (ตัวเลข >= 0)' });
+    }
+    if (isNaN(numPoints) || numPoints <= 0) {
+      return res.status(400).json({ error: 'กรุณาระบุคะแนนที่ต้องใช้แลก (ตัวเลข > 0)' });
+    }
+    if (!trimmedImage) {
+      return res.status(400).json({ error: 'กรุณาระบุรูปภาพหรือ Emoji ของของรางวัล' });
+    }
+
+    const insertRes = await execute(
+      'INSERT INTO rewards (reward_name, point_required, stock, image) VALUES (?, ?, ?, ?)',
+      [trimmedName, numPoints, numStock, trimmedImage]
+    );
+    const newReward = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [Number(insertRes.lastInsertRowid)]);
+
+    await execute(
+      "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+      [1, 1, `แอดมินเพิ่มของรางวัลใหม่: "${trimmedName}" (${numStock} ชิ้น, ใช้ ${numPoints} แต้ม)`]
+    );
+
+    res.json({ 
+      success: true, 
+      reward: newReward, 
+      message: `เพิ่มของรางวัล "${trimmedName}" เข้าสู่ระบบสำเร็จ!` 
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4.3 ADMIN: DELETE REWARD
+app.post('/api/admin/rewards/delete', async (req, res) => {
+  try {
+    const { rewardId } = req.body;
+    if (!rewardId) return res.status(400).json({ error: 'Missing rewardId' });
+
+    const target = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [rewardId]);
+    if (!target) return res.status(404).json({ error: 'Reward not found' });
+
+    await execute('DELETE FROM rewards WHERE reward_id = ?', [rewardId]);
+    res.json({ success: true, message: `ลบของรางวัล "${target.reward_name}" เรียบร้อยแล้ว` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. REDEEM REWARD
+app.post('/api/redeem', async (req, res) => {
+  try {
+    const { userId, rewardId, quantity = 1 } = req.body;
+    if (!userId || !rewardId) {
+      return res.status(400).json({ error: 'Missing userId or rewardId' });
+    }
+
+    const user = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
+    const reward = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [rewardId]);
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!reward) return res.status(404).json({ error: 'Reward not found' });
+
+    const totalPointsNeeded = reward.point_required * quantity;
+    if (user.points < totalPointsNeeded) {
+      return res.status(400).json({ error: 'คะแนนไม่เพียงพอสำหรับการแลกของรางวัลนี้' });
+    }
+
+    if (reward.stock < quantity) {
+      return res.status(400).json({ error: 'สินค้าในคลังหมดแล้ว' });
+    }
+
+    // LibSQL atomic batch
+    await db.batch([
+      { sql: 'UPDATE user SET points = points - ? WHERE user_id = ?', args: [totalPointsNeeded, userId] },
+      { sql: 'UPDATE rewards SET stock = stock - ? WHERE reward_id = ?', args: [quantity, rewardId] },
+      { 
+        sql: "INSERT INTO redemptions (user_id, reward_id, points_used, quantity, status, redeemed_at) VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))", 
+        args: [userId, rewardId, totalPointsNeeded, quantity, 'สำเร็จ'] 
+      }
+    ]);
+
+    const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
+    const updatedReward = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [rewardId]);
+
+    res.json({
+      success: true,
+      user: updatedUser,
+      reward: updatedReward,
+      message: `แลกรับ "${reward.reward_name}" สำเร็จ!`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. GET USER REDEMPTIONS
+app.get('/api/redemptions/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const history = await queryAll(`
+      SELECT r.redemption_id, r.user_id, r.reward_id, r.points_used, r.quantity, r.status, r.redeemed_at,
+             w.reward_name, w.image
+      FROM redemptions r
+      JOIN rewards w ON r.reward_id = w.reward_id
+      WHERE r.user_id = ?
+      ORDER BY r.redemption_id DESC
+    `, [userId]);
+
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. GARBAGE REPORTS / PICKUP REQUESTS
+app.get('/api/pickup', async (req, res) => {
+  try {
+    const reports = await queryAll(`
+      SELECT g.*, u.name as user_name, u.phone as user_phone, l.location_name
+      FROM garbage_reports g
+      LEFT JOIN user u ON g.user_id = u.user_id
+      LEFT JOIN locations l ON g.location_id = l.location_id
+      ORDER BY g.report_id DESC
+    `);
+    res.json({ reports });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pickup', async (req, res) => {
+  try {
+    const { userId, title, description, locationName = 'กรุงเทพฯ' } = req.body;
+
+    let loc = await queryOne('SELECT * FROM locations WHERE location_name = ?', [locationName]);
+    if (!loc) {
+      const resLoc = await execute('INSERT INTO locations (location_name) VALUES (?)', [locationName]);
+      loc = { location_id: Number(resLoc.lastInsertRowid) };
+    }
+
+    const insertReport = await execute(
+      'INSERT INTO garbage_reports (user_id, location_id, title, descriiption, reward_point, status) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId || 1, loc.location_id, title || 'เรียกรถรับซื้อขยะ', description || '', 0, 'Waiting']
+    );
+
+    const newReport = await queryOne('SELECT * FROM garbage_reports WHERE report_id = ?', [Number(insertReport.lastInsertRowid)]);
+    res.json({ success: true, report: newReport });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. ADD REWARD POINTS & RECORD WASTE STATS
+app.post('/api/points/add', async (req, res) => {
+  try {
+    const { 
+      userId, 
+      points, 
+      summary, 
+      staffId = 1,
+      recycleKg = 0,
+      organicKg = 0,
+      generalKg = 0,
+      hazardousKg = 0,
+      totalWeight = 0
+    } = req.body;
+
+    if (!userId || !points) {
+      return res.status(400).json({ error: 'Missing userId or points' });
+    }
+
+    const totalKg = totalWeight > 0 ? totalWeight : (recycleKg + organicKg + generalKg + hazardousKg);
+
+    await db.batch([
+      { sql: 'UPDATE user SET points = points + ? WHERE user_id = ?', args: [points, userId] },
+      { 
+        sql: 'INSERT INTO waste_history (user_id, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+        args: [userId, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points] 
+      },
+      { 
+        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))", 
+        args: [staffId, 1, `โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`] 
+      }
+    ]);
+
+    const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 9. GET ALL STAFFS
+app.get('/api/staffs', async (req, res) => {
+  try {
+    const staffs = await queryAll('SELECT * FROM staffs');
+    res.json({ staffs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 10. GET & UPDATE WASTE RATES
+app.get('/api/rates', async (req, res) => {
+  try {
+    const rates = await queryAll('SELECT * FROM waste_rates');
+    res.json({ rates });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/rates/update', async (req, res) => {
+  try {
+    const { rates } = req.body;
+    if (!Array.isArray(rates)) {
+      return res.status(400).json({ error: 'rates must be an array' });
+    }
+
+    const statements = rates
+      .filter(r => r.category_key && r.points_per_unit !== undefined)
+      .map(r => ({
+        sql: 'UPDATE waste_rates SET points_per_unit = ? WHERE category_key = ?',
+        args: [parseFloat(r.points_per_unit), r.category_key]
+      }));
+
+    if (statements.length > 0) {
+      await db.batch(statements);
+    }
+
+    const updatedRates = await queryAll('SELECT * FROM waste_rates');
+    res.json({ 
+      success: true, 
+      rates: updatedRates, 
+      message: 'อัปเดตอัตราตัวคูณขยะ 4 ประเภทลงฐานข้อมูลสำเร็จ!' 
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 11. ADMIN: GET ALL USERS
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const users = await queryAll('SELECT user_id, username, name, email, phone, points, profile_image FROM user ORDER BY user_id DESC');
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 12. ADMIN: ADJUST USER POINTS
+app.post('/api/admin/user/adjust-points', async (req, res) => {
+  try {
+    const { usernameOrId, points, mode = 'set' } = req.body;
+    if (!usernameOrId || points === undefined) {
+      return res.status(400).json({ error: 'กรุณาระบุชื่อ/รหัสผู้ใช้ และคะแนน' });
+    }
+
+    const numPoints = parseInt(points);
+    if (isNaN(numPoints)) {
+      return res.status(400).json({ error: 'คะแนนต้องเป็นตัวเลข' });
+    }
+
+    const targetUser = await queryOne(
+      'SELECT * FROM user WHERE user_id = ? OR LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?)',
+      [usernameOrId, usernameOrId, usernameOrId]
+    );
+
+    if (!targetUser) {
+      return res.status(404).json({ error: `ไม่พบผู้ใช้งาน "${usernameOrId}" ในระบบ` });
+    }
+
+    let newPoints = numPoints;
+    if (mode === 'add') {
+      newPoints = targetUser.points + numPoints;
+    }
+    if (newPoints < 0) newPoints = 0;
+
+    await db.batch([
+      { sql: 'UPDATE user SET points = ? WHERE user_id = ?', args: [newPoints, targetUser.user_id] },
+      {
+        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+        args: [1, 1, `แอดมินปรับคะแนนผู้ใช้ "${targetUser.username}" จาก ${targetUser.points} เป็น ${newPoints} แต้ม`]
+      }
+    ]);
+
+    const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [targetUser.user_id]);
+    res.json({ 
+      success: true, 
+      user: updatedUser, 
+      message: `ปรับคะแนนผู้ใช้ "${updatedUser.username}" เป็น ${newPoints.toLocaleString()} แต้ม สำเร็จ!` 
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// STATIC FILES & SPA FALLBACK (Production)
+// -------------------------------------------------------------
+const distPath = path.resolve(process.cwd(), 'dist');
+app.use(express.static(distPath));
+
+app.use((req, res) => {
+  if (req.url.startsWith('/api')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  res.sendFile(path.resolve(distPath, 'index.html'));
+});
+
+// Start Server
+initDatabase().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+    console.log(`📦 Serving static frontend from: ${distPath}`);
+  });
+});
