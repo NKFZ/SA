@@ -477,6 +477,8 @@ function generateEmployeeQR() {
     hazardousKg: totals.hazardousKg,
     summary: summaryParts.join(', '),
     collectorName: currentStaff ? currentStaff.staff_name : 'สมชาย เก็บขยะ (EMP-8821)',
+    location: 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)',
+    staffId: currentStaff ? currentStaff.staff_id : 1,
     timestamp: Date.now()
   };
 
@@ -809,6 +811,21 @@ async function loadPickupQueue() {
    Global UI Refresh & Toast Helper
    ========================================================================== */
 export async function refreshAllUI() {
+  // Sync latest user data from database
+  if (currentUser && currentUser.user_id) {
+    try {
+      const res = await fetch(`/api/user/${currentUser.user_id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          currentUser = data.user;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not refresh current user:', e);
+    }
+  }
+
   // Sync user display
   if (currentUser) {
     const pointsHeader = document.getElementById('header-points-val');
@@ -859,6 +876,9 @@ export async function refreshAllUI() {
   renderUserAvatar();
 
   createIcons({ icons });
+
+  window.getCurrentUser = () => currentUser;
+  window.setCurrentUser = (u) => { currentUser = u; };
 }
 
 // ข้อ 2: จัดการการเลือกรูปภาพโปรไฟล์ (เฉพาะฝั่งคนขาย) และบันทึกลง SQLite DB

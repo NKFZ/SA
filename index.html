@@ -765,6 +765,109 @@
       </div>
     </div>
 
+    <!-- Waste Recycling Scan Confirmation Modal (หน้าสรุปทั้งหมดก่อนกดยืนยันรับแต้ม) -->
+    <div id="qr-summary-modal-overlay" class="login-overlay hidden" style="z-index: 9999;">
+      <div class="login-card-figma" style="max-width: 460px; text-align: left; padding: 22px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--navy-dark); padding-bottom: 12px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 42px; height: 42px; border-radius: 50%; background: var(--emerald-green); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+              📋
+            </div>
+            <div>
+              <h3 style="margin: 0; font-size: 1.15rem; color: var(--navy-dark);">สรุปรายการขายขยะ</h3>
+              <p style="margin: 0; font-size: 0.75rem; color: var(--text-muted);">ตรวจสอบรายละเอียดก่อนยืนยันรับแต้ม</p>
+            </div>
+          </div>
+          <span id="summary-tx-id" style="font-family: monospace; font-size: 0.75rem; font-weight: 800; background: var(--navy-dark); color: var(--lime-accent); padding: 4px 8px; border-radius: 6px;">TX-00000</span>
+        </div>
+
+        <!-- Info Grid (Date, Time, Location, Staff) -->
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px; font-size: 0.82rem; margin-bottom: 14px; display: grid; grid-template-columns: 1fr; gap: 6px;">
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--text-muted);">📅 วันและเวลา:</span>
+            <strong id="summary-datetime" style="color: var(--navy-dark);">-</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--text-muted);">📍 สถานที่:</span>
+            <strong id="summary-location" style="color: var(--navy-dark);">-</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--text-muted);">👷‍♂️ พนักงานผู้รับซื้อ:</span>
+            <strong id="summary-staff" style="color: var(--navy-dark);">-</strong>
+          </div>
+        </div>
+
+        <!-- Waste Category Breakdown -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-weight: 800; font-size: 0.85rem; color: var(--navy-dark); margin-bottom: 8px;">
+            ♻️ รายการประเภทขยะที่นำมาขาย:
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; font-size: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>♻️</span>
+                <span>Recycle Waste (ขยะรีไซเคิล)</span>
+              </div>
+              <strong id="summary-recycle-kg" style="color: var(--light-green);">0.0 kg</strong>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; font-size: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>🍌</span>
+                <span>Organic Waste (ขยะอินทรีย์)</span>
+              </div>
+              <strong id="summary-organic-kg" style="color: var(--amber-orange);">0.0 kg</strong>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; font-size: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>📦</span>
+                <span>General Waste (ขยะทั่วไป)</span>
+              </div>
+              <strong id="summary-general-kg" style="color: var(--purple-accent);">0.0 kg</strong>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; font-size: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>☣️</span>
+                <span>Hazardous Waste (ขยะอันตราย)</span>
+              </div>
+              <strong id="summary-hazardous-kg" style="color: var(--danger-red);">0.0 kg</strong>
+            </div>
+          </div>
+
+          <!-- Total Weight -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 6px 12px; background: #f1f5f9; border-radius: 8px; font-size: 0.85rem;">
+            <span style="font-weight: 700; color: var(--navy-dark);">⚖️ น้ำหนักรวมทั้งหมด:</span>
+            <strong id="summary-total-kg" style="font-size: 1rem; color: var(--navy-dark);">0.0 kg</strong>
+          </div>
+        </div>
+
+        <!-- Total Points Highlight Banner -->
+        <div style="background: linear-gradient(135deg, var(--navy-dark) 0%, #003366 100%); color: #fff; border-radius: 16px; padding: 14px 18px; text-align: center; margin-bottom: 18px; border: 2px solid var(--lime-accent);">
+          <div style="font-size: 0.8rem; color: var(--lime-accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+            ✨ แต้มสะสมที่คุณจะได้รับ
+          </div>
+          <div id="summary-points-val" style="font-size: 2.2rem; font-weight: 900; color: #ffffff; margin: 4px 0; text-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+            +0 แต้ม
+          </div>
+          <div style="font-size: 0.75rem; color: rgba(255,255,255,0.8);">
+            กดปุ่มด้านล่างเพื่อบันทึกแต้มเข้าบัญชีของคุณทันที
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button id="btn-confirm-claim-points" class="btn-figma-primary" style="background: var(--emerald-green); color: #fff; border-color: var(--navy-dark); font-size: 1rem; padding: 14px;">
+            <i data-lucide="check-circle"></i> ยืนยันเพื่อรับแต้ม
+          </button>
+          <button id="btn-cancel-claim-points" class="btn-figma-secondary" style="background: #e2e8f0; color: var(--navy-dark); border: 2px solid #cbd5e1;">
+            <i data-lucide="x"></i> ยกเลิก / ปิดหน้าต่าง
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Global Toast Container -->
     <div id="toast-container" class="toast-container"></div>
   </div>
