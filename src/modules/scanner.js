@@ -89,6 +89,16 @@ async function toggleCameraScanner(showToast, refreshAllUI) {
           return;
         }
 
+        // ข้อ 12: ตรวจสอบถ้าไม่ได้สแกนของตัวเอง จะไม่ได้คะแนน
+        const loggedUser = window.getCurrentUser ? window.getCurrentUser() : null;
+        const currentUserId = loggedUser ? loggedUser.user_id : (localStorage.getItem('ECO_USER_ID') ? Number(localStorage.getItem('ECO_USER_ID')) : null);
+
+        if (payload.targetUserId && currentUserId && Number(payload.targetUserId) !== Number(currentUserId)) {
+          showToast(`❌ ไม่สามารถรับคะแนนได้! QR Code นี้ถูกสร้างสำหรับ "${payload.targetUserName || 'ลูกค้าท่านอื่น'}" (ID: ${payload.targetUserId}) ซึ่งไม่ใช่บัญชีของคุณ`, 'error');
+          isProcessingScan = false;
+          return;
+        }
+
         openSummaryModal(payload, showToast, refreshAllUI);
       },
       (errorMessage) => {
@@ -118,9 +128,15 @@ async function stopScanner() {
 }
 
 export function simulateScan(showToast, refreshAllUI) {
+  const loggedUser = window.getCurrentUser ? window.getCurrentUser() : null;
+  const myUserId = loggedUser ? loggedUser.user_id : (localStorage.getItem('ECO_USER_ID') ? Number(localStorage.getItem('ECO_USER_ID')) : 1);
+  const myName = loggedUser ? (loggedUser.name || loggedUser.username) : 'คุณ';
+
   const mockPayload = {
     type: 'ECO_RECYCLE_POINTS',
     id: 'TX-' + Math.floor(10000 + Math.random() * 90000),
+    targetUserId: myUserId,
+    targetUserName: myName,
     points: 450,
     totalWeight: 12.5,
     recycleKg: 5.0,
@@ -229,7 +245,9 @@ async function handleConfirmClaimPoints(showToast, refreshAllUI) {
         organicKg: pendingPayload.organicKg || 0,
         generalKg: pendingPayload.generalKg || 0,
         hazardousKg: pendingPayload.hazardousKg || 0,
-        totalWeight: pendingPayload.totalWeight || 0
+        totalWeight: pendingPayload.totalWeight || 0,
+        targetUserId: pendingPayload.targetUserId || null,
+        reportId: pendingPayload.reportId || null
       })
     });
 

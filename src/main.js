@@ -378,6 +378,17 @@ function switchView(viewId) {
     }
   });
 
+  if (viewId === 'view-seller-queue') {
+    loadSellerQueueStatus();
+  } else if (viewId === 'view-employee-queue') {
+    loadPickupQueue();
+  } else if (viewId === 'view-seller-profile' && currentUser) {
+    const profileAddr = document.getElementById('profile-input-address');
+    const profilePhone = document.getElementById('profile-input-phone');
+    if (profileAddr && !profileAddr.value && currentUser.address) profileAddr.value = currentUser.address;
+    if (profilePhone && !profilePhone.value && currentUser.phone) profilePhone.value = currentUser.phone;
+  }
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
   createIcons({ icons });
 }
@@ -386,13 +397,45 @@ function switchView(viewId) {
    Employee Logic (Form, Evaluation, QR Code)
    ========================================================================== */
 function setupEmployeeFormEvents() {
-  window.employeeGoToLocation = (queueNo, name, userId) => {
+  window.employeeGoToLocation = (reportId, name, userId) => {
     const label = document.getElementById('form-customer-name-display');
-    if (label) label.textContent = `${name} (User #${userId || queueNo})`;
+    if (label) label.textContent = `${name} (User #${userId || 1}) - คิวคำขอ #${reportId}`;
     window.currentServingUserId = userId || 1;
+    window.currentServingUserName = name || 'ลูกค้า';
+    window.currentServingReportId = reportId || null;
     switchView('view-employee-form');
     calcEmpTotals();
-    showToast(`กำลังรับซื้อขยะให้ลูกค้า ${name}`, 'info');
+    showToast(`กำลังรับซื้อขยะให้ลูกค้า ${name} (คำขอ #${reportId})`, 'info');
+  };
+
+  window.handleDirectConfirmQueue = async () => {
+    if (!window.currentServingReportId) {
+      showToast('ไม่พบคิวที่กำลังให้บริการอยู่ หรือคิวนี้ได้รับการยืนยันแล้ว', 'warning');
+      return;
+    }
+    const reportIdToConfirm = window.currentServingReportId;
+    try {
+      const res = await fetch('/api/pickup/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportId: reportIdToConfirm,
+          staffId: currentStaff ? currentStaff.staff_id : 1
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`✅ ยืนยันคิว #${reportIdToConfirm} เสร็จสิ้นแล้ว ปลดล็อคคิวถัดไปเรียบร้อย`, 'success');
+        window.currentServingReportId = null;
+        await loadPickupQueue();
+        switchView('view-employee-queue');
+      } else {
+        showToast(data.error || 'ไม่สามารถยืนยันคิวได้', 'error');
+      }
+    } catch (err) {
+      console.error('Confirm queue error:', err);
+      showToast('เกิดข้อผิดพลาดในการยืนยันคิว', 'error');
+    }
   };
 
   window.calcEmpTotals = calcEmpTotals;
@@ -410,7 +453,7 @@ function setupEmployeeFormEvents() {
         return;
       }
 
-      const targetUserId = currentUser ? currentUser.user_id : (window.currentServingUserId || 1);
+      const targetUserId = currentEmployeePayload.targetUserId || (currentUser ? currentUser.user_id : (window.currentServingUserId || 1));
 
       // Add points to user in SQLite database (ข้อ 3: เฉพาะแต้ม + บันทึกสถิติน้ำหนัก)
       try {
@@ -426,7 +469,9 @@ function setupEmployeeFormEvents() {
             organicKg: currentEmployeePayload.organicKg || 0,
             generalKg: currentEmployeePayload.generalKg || 0,
             hazardousKg: currentEmployeePayload.hazardousKg || 0,
-            totalWeight: currentEmployeePayload.totalWeight || 0
+            totalWeight: currentEmployeePayload.totalWeight || 0,
+            targetUserId: targetUserId,
+            reportId: currentEmployeePayload.reportId || window.currentServingReportId || null
           })
         });
 
@@ -437,10 +482,13 @@ function setupEmployeeFormEvents() {
             confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
           } catch (e) {}
 
-          showToast(`อนุมัติโอนแต้มสำเร็จ! +${currentEmployeePayload.points} แต้มให้ลูกค้า`, 'success');
+          showToast(`อนุมัติโอนแต้มสำเร็จ! +${currentEmployeePayload.points} แต้มให้ลูกค้า และปิดคิวเรียบร้อย`, 'success');
+          window.currentServingReportId = null;
           await refreshAllUI();
           switchRole('seller', false);
           switchView('view-seller-home');
+        } else {
+          showToast(data.error || 'เกิดข้อผิดพลาดในการบันทึกแต้ม', 'error');
         }
       } catch (err) {
         console.error('Points transfer error:', err);
@@ -492,10 +540,16 @@ function generateEmployeeQR() {
   if (totals.generalBags > 0) summaryParts.push(`General ${totals.generalBags}ถุง (${totals.generalKg}kg)`);
   if (totals.hazardousItems > 0) summaryParts.push(`Hazardous ${totals.hazardousItems}ชิ้น (${totals.hazardousKg}kg)`);
 
-  // Payload: เฉพาะแต้มและน้ำหนักขยะ (ไม่มีเงิน)
+  const assignedUserId = window.currentServingUserId || (currentUser ? currentUser.user_id : 1);
+  const assignedUserName = window.currentServingUserName || (currentUser ? (currentUser.name || currentUser.username) : 'ลูกค้า');
+
+  // Payload: เฉพาะแต้มและน้ำหนักขยะ (ข้อ 12: แนบ targetUserId ป้องกันคนอื่นสแกนรับแทน)
   currentEmployeePayload = {
     type: 'ECO_RECYCLE_POINTS',
     id: txId,
+    targetUserId: assignedUserId,
+    targetUserName: assignedUserName,
+    reportId: window.currentServingReportId || null,
     points: totals.totalPoints,
     totalWeight: totals.totalWeight,
     recycleKg: totals.recycleKg,
@@ -522,11 +576,11 @@ function generateEmployeeQR() {
         showToast('เกิดข้อผิดพลาดในการสร้าง QR Code', 'error');
         return;
       }
-      if (idEl) idEl.textContent = `${txId} | ${totals.totalPoints} แต้ม`;
+      if (idEl) idEl.textContent = `${txId} | สำหรับ: ${assignedUserName} (#${assignedUserId}) | ${totals.totalPoints} แต้ม`;
       
       switchView('view-employee-qr');
       startQRTimer();
-      showToast(`สร้าง QR Code สำเร็จ! (${totals.totalPoints} แต้ม)`, 'success');
+      showToast(`สร้าง QR Code สำเร็จ! สำหรับคุณ ${assignedUserName} (${totals.totalPoints} แต้ม)`, 'success');
     });
   }
 }
@@ -553,15 +607,85 @@ function startQRTimer() {
    Seller Logic (Pickup Reports & Redemptions from DB)
    ========================================================================== */
 function setupSellerPickupForm() {
+  // บันทึกที่อยู่เริ่มต้นจากฟอร์มเรียกรถ (ข้อ 14)
+  window.saveUserAddressFromForm = async () => {
+    if (!currentUser || !currentUser.user_id) return;
+    const address = document.getElementById('input-pickup-address')?.value;
+    const phone = document.getElementById('input-pickup-phone')?.value;
+    if (!address || !address.trim()) {
+      showToast('กรุณากรอกที่อยู่ก่อนกดบันทึก', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/user/address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.user_id, address: address.trim(), phone: (phone || '').trim() })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        currentUser = data.user;
+        showToast('💾 บันทึกที่อยู่และเบอร์โทรเริ่มต้นของคุณเรียบร้อยแล้ว', 'success');
+        const profileAddr = document.getElementById('profile-input-address');
+        const profilePhone = document.getElementById('profile-input-phone');
+        if (profileAddr) profileAddr.value = address.trim();
+        if (profilePhone && phone) profilePhone.value = phone.trim();
+      } else {
+        showToast(data.error || 'บันทึกที่อยู่ไม่สำเร็จ', 'error');
+      }
+    } catch (err) {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+  };
+
+  // บันทึกที่อยู่เริ่มต้นจากหน้าโปรไฟล์ (ข้อ 14)
+  window.saveUserAddressFromProfile = async () => {
+    if (!currentUser || !currentUser.user_id) return;
+    const address = document.getElementById('profile-input-address')?.value;
+    const phone = document.getElementById('profile-input-phone')?.value;
+    if (!address || !address.trim()) {
+      showToast('กรุณากรอกที่อยู่ก่อนกดบันทึก', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/user/address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.user_id, address: address.trim(), phone: (phone || '').trim() })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        currentUser = data.user;
+        showToast('💾 บันทึกที่อยู่และเบอร์โทรเริ่มต้นในโปรไฟล์สำเร็จ', 'success');
+        const inputAddr = document.getElementById('input-pickup-address');
+        const inputPhone = document.getElementById('input-pickup-phone');
+        if (inputAddr) inputAddr.value = address.trim();
+        if (inputPhone && phone) inputPhone.value = phone.trim();
+      } else {
+        showToast(data.error || 'บันทึกที่อยู่ไม่สำเร็จ', 'error');
+      }
+    } catch (err) {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+  };
+
   window.handleSellerPickupSubmit = async (e) => {
     e.preventDefault();
     const address = document.getElementById('input-pickup-address')?.value;
     const desc = document.getElementById('input-pickup-desc')?.value;
     const phone = document.getElementById('input-pickup-phone')?.value;
 
-    if (!address) {
-      showToast('กรุณากรอกที่อยู่', 'warning');
+    if (!address || !address.trim()) {
+      showToast('กรุณากรอกที่อยู่นัดหมาย', 'warning');
       return;
+    }
+
+    const btnSubmit = document.getElementById('btn-submit-pickup');
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<i data-lucide="loader" class="spin"></i> กำลังส่งคำขอ...';
     }
 
     try {
@@ -571,22 +695,141 @@ function setupSellerPickupForm() {
         body: JSON.stringify({
           userId: currentUser ? currentUser.user_id : 1,
           title: 'เรียกรถรับซื้อขยะ',
-          description: `${desc || ''} | โทร: ${phone || ''}`,
-          locationName: address
+          description: desc || 'ขยะรีไซเคิล',
+          phone: phone || '',
+          locationName: address.trim()
         })
       });
 
       const data = await res.json();
-      if (data.success) {
-        showToast(`เรียกรถสำเร็จ! หมายเลขคำขอ #${data.report.report_id}`, 'success');
+      if (res.ok && data.success) {
+        const staffName = data.assignedStaff ? data.assignedStaff.staff_name : (data.report.staff_name || 'พนักงาน');
+        showToast(`🎉 เรียกรถสำเร็จ! คิว #${data.report.report_id} มอบหมายให้ "${staffName}"`, 'success');
         switchView('view-seller-queue');
+        await loadSellerQueueStatus();
         await loadPickupQueue();
+      } else {
+        showToast(data.error || 'เกิดข้อผิดพลาดในการบันทึกคำขอ', 'error');
       }
     } catch (err) {
       console.error('Pickup request error:', err);
       showToast('เกิดข้อผิดพลาดในการบันทึกคำขอ', 'error');
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<i data-lucide="send"></i> ยืนยันเรียกรถรับขยะ (บันทึกลงระบบ)';
+        if (window.lucide) window.lucide.createIcons();
+      }
+      await loadSellerQueueStatus();
     }
   };
+}
+
+// ข้อ 11 & ข้อ 21: จัดการสถานะคิวของฝั่ง User
+async function loadSellerQueueStatus() {
+  const dateDisplay = document.getElementById('queue-date-display');
+  const noDisplay = document.getElementById('queue-no-display');
+  const statusDot = document.getElementById('queue-status-dot');
+  const statusText = document.getElementById('queue-status-text');
+  const staffInfoContainer = document.getElementById('queue-staff-info-container');
+  const staffNameVal = document.getElementById('queue-staff-name-val');
+  const staffPhoneVal = document.getElementById('queue-staff-phone-val');
+  const locationVal = document.getElementById('queue-location-val');
+  const descVal = document.getElementById('queue-desc-val');
+  const estTimeDisplay = document.getElementById('queue-est-time-display');
+  const emptyPrompt = document.getElementById('queue-empty-prompt');
+  const lockBanner = document.getElementById('queue-active-lock-banner');
+  const submitBtn = document.getElementById('btn-submit-pickup');
+  const addressInput = document.getElementById('input-pickup-address');
+  const descInput = document.getElementById('input-pickup-desc');
+  const phoneInput = document.getElementById('input-pickup-phone');
+
+  // Pre-fill user default address and phone if available
+  if (currentUser) {
+    if (addressInput && !addressInput.value && currentUser.address) {
+      addressInput.value = currentUser.address;
+    }
+    if (phoneInput && !phoneInput.value && currentUser.phone) {
+      phoneInput.value = currentUser.phone;
+    }
+    const profileAddr = document.getElementById('profile-input-address');
+    const profilePhone = document.getElementById('profile-input-phone');
+    if (profileAddr && !profileAddr.value && currentUser.address) profileAddr.value = currentUser.address;
+    if (profilePhone && !profilePhone.value && currentUser.phone) profilePhone.value = currentUser.phone;
+  }
+
+  if (!currentUser || !currentUser.user_id) return;
+
+  try {
+    const res = await fetch(`/api/pickup/user/${currentUser.user_id}`);
+    const data = await res.json();
+    const report = data.report;
+
+    if (report && report.status === 'Waiting') {
+      // มีคิวรอดำเนินการ (Status: Waiting)
+      if (dateDisplay) {
+        const timeStr = report.created_at ? new Date(report.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'วันนี้ (เวลานัดหมาย)';
+        dateDisplay.textContent = `📅 วันที่เรียก: ${timeStr}`;
+      }
+      if (noDisplay) noDisplay.textContent = `Queue Number : A-${String(report.report_id).padStart(3, '0')}`;
+      if (statusDot) {
+        statusDot.className = 'status-dot active';
+        statusDot.style.background = 'var(--amber-orange)';
+      }
+      if (statusText) statusText.textContent = 'Status: Waiting (กำลังรอพนักงาน)';
+
+      // ข้อมูลพนักงาน (ข้อ 11)
+      if (staffInfoContainer) staffInfoContainer.style.display = 'block';
+      if (staffNameVal) staffNameVal.textContent = report.staff_name || 'กำลังจัดสรรพนักงาน';
+      if (staffPhoneVal) {
+        staffPhoneVal.textContent = report.staff_phone || '081-999-8888';
+        staffPhoneVal.href = `tel:${report.staff_phone || ''}`;
+      }
+      if (locationVal) locationVal.textContent = report.location_name || '-';
+      if (descVal) descVal.textContent = report.descriiption || '-';
+
+      if (estTimeDisplay) estTimeDisplay.style.display = 'block';
+      if (emptyPrompt) emptyPrompt.style.display = 'none';
+
+      // ข้อ 21: ล็อคฟอร์มไม่ให้กดซ้ำ
+      if (lockBanner) lockBanner.style.display = 'block';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i data-lucide="clock"></i> มีคิวรอดำเนินการอยู่ (ไม่สามารถเรียกซ้ำได้)';
+      }
+      if (addressInput) addressInput.disabled = true;
+      if (descInput) descInput.disabled = true;
+      if (phoneInput) phoneInput.disabled = true;
+
+    } else {
+      // ยังไม่ได้เรียกพนักงาน (ข้อ 11)
+      if (dateDisplay) dateDisplay.textContent = '📅 ยังไม่มีนัดหมาย';
+      if (noDisplay) noDisplay.textContent = 'Queue Number : -';
+      if (statusDot) {
+        statusDot.className = 'status-dot';
+        statusDot.style.background = '#94a3b8';
+      }
+      if (statusText) statusText.textContent = 'สถานะ: ยังไม่ได้เรียกพนักงาน';
+
+      if (staffInfoContainer) staffInfoContainer.style.display = 'none';
+      if (estTimeDisplay) estTimeDisplay.style.display = 'none';
+      if (emptyPrompt) emptyPrompt.style.display = 'block';
+
+      // ปลดล็อคฟอร์มให้กดเรียกได้ตามปกติ
+      if (lockBanner) lockBanner.style.display = 'none';
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i data-lucide="send"></i> ยืนยันเรียกรถรับขยะ (บันทึกลงระบบ)';
+      }
+      if (addressInput) addressInput.disabled = false;
+      if (descInput) descInput.disabled = false;
+      if (phoneInput) phoneInput.disabled = false;
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+  } catch (err) {
+    console.error('Error loading seller queue status:', err);
+  }
 }
 
 // ข้อ 4 & ข้อ 9: ระบบแลกของรางวัล & แสดงผล 6 ชิ้นต่อหนึ่งหน้าพร้อมปุ่มเปลี่ยนหน้า
@@ -792,7 +1035,7 @@ async function loadRedemptionsHistory() {
   }
 }
 
-// โหลดคำขอจากตาราง garbage_reports
+// โหลดคำขอจากตาราง garbage_reports (ข้อ 20: ล็อคคิวแบบ FIFO ต้อง confirm คิวแรกก่อนถึงจะกดรับคิวถัดไปได้)
 async function loadPickupQueue() {
   const container = document.getElementById('employee-queue-cards-container');
   try {
@@ -800,32 +1043,69 @@ async function loadPickupQueue() {
     const data = await res.json();
     const reports = data.reports || [];
 
+    // กรองเฉพาะคิวที่ยัง Waiting และเรียงตาม report_id ASC (FIFO)
+    const waitingReports = reports.filter(r => r.status === 'Waiting');
+    waitingReports.sort((a, b) => a.report_id - b.report_id);
+
     const queueCountEl = document.getElementById('employee-queue-count');
-    if (queueCountEl) queueCountEl.textContent = reports.length;
+    if (queueCountEl) queueCountEl.textContent = waitingReports.length;
 
     if (!container) return;
 
-    if (reports.length === 0) {
-      container.innerHTML = `<p style="text-align:center; padding:20px; color:var(--text-muted);">ยังไม่มีคำขอเรียกรถในระบบ</p>`;
+    if (waitingReports.length === 0) {
+      container.innerHTML = `<p style="text-align:center; padding:24px; color:var(--text-muted);">🎉 ยังไม่มีคำขอเรียกรถค้างในระบบ ทุกคิวเสร็จสิ้นแล้ว</p>`;
       return;
     }
 
-    container.innerHTML = reports.map(r => `
-      <div class="employee-queue-item">
-        <div class="queue-item-top">
-          <span class="queue-badge-tag">คำขอ #${r.report_id}</span>
-          <span style="font-size:0.8rem; font-weight:700; color:var(--amber-orange);">🟡 ${r.status || 'Waiting'}</span>
-        </div>
-        <div class="user-detail-rows">
-          <div>ลูกค้า : <strong>${r.user_name || 'ลูกค้าทั่วไป'}</strong></div>
-          <div>สถานที่ : <strong>${r.location_name || '-'}</strong></div>
-          <div>รายละเอียด : ${r.descriiption || '-'}</div>
-        </div>
-        <button class="btn-figma-primary margin-top-md" onclick="employeeGoToLocation('${r.report_id}', '${r.user_name || 'ลูกค้า'}', ${r.user_id || 1})">
-          <i data-lucide="navigation"></i> Go To Location (ไปรับซื้อขยะ)
-        </button>
-      </div>
-    `).join('');
+    const firstReport = waitingReports[0];
+
+    container.innerHTML = waitingReports.map((r, index) => {
+      const isFirst = index === 0;
+
+      if (isFirst) {
+        return `
+          <div class="employee-queue-item" style="border: 2px solid var(--emerald-green); background: #f0fdf4; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);">
+            <div class="queue-item-top">
+              <span class="queue-badge-tag" style="background:var(--emerald-green); color:#fff;">คิวแรกที่ต้องทำ #${r.report_id}</span>
+              <span style="font-size:0.8rem; font-weight:700; color:var(--emerald-green);">🟢 พร้อมรับงาน</span>
+            </div>
+            <div class="user-detail-rows">
+              <div>ลูกค้า : <strong>${r.user_name || 'ลูกค้าทั่วไป'}</strong></div>
+              <div>เบอร์โทร : <strong>${r.user_phone || '-'}</strong></div>
+              <div>สถานที่ : <strong>${r.location_name || '-'}</strong></div>
+              <div>รายละเอียด : ${r.descriiption || '-'}</div>
+              <div>พนักงานที่รับผิดชอบ : <strong style="color:var(--navy-dark);">${r.staff_name || 'ยังไม่ระบุ'}</strong></div>
+            </div>
+            <button class="btn-figma-primary margin-top-md" onclick="employeeGoToLocation('${r.report_id}', '${r.user_name || 'ลูกค้า'}', ${r.user_id || 1})">
+              <i data-lucide="navigation"></i> Go To Location (ไปรับซื้อขยะคิวนี้)
+            </button>
+          </div>
+        `;
+      } else {
+        // ข้อ 20: คิวถัดไป ต้องยืนยันคิวแรกก่อน
+        return `
+          <div class="employee-queue-item" style="opacity: 0.75; background: #f8fafc; border: 1px dashed #cbd5e1;">
+            <div class="queue-item-top">
+              <span class="queue-badge-tag" style="background:#64748b; color:#fff;">คิวลำดับที่ ${index + 1} (#${r.report_id})</span>
+              <span style="font-size:0.8rem; font-weight:700; color:#ef4444;">🔒 ล็อค (รอคิวแรก)</span>
+            </div>
+            <div class="user-detail-rows">
+              <div>ลูกค้า : <strong>${r.user_name || 'ลูกค้าทั่วไป'}</strong></div>
+              <div>เบอร์โทร : <strong>${r.user_phone || '-'}</strong></div>
+              <div>สถานที่ : <strong>${r.location_name || '-'}</strong></div>
+              <div>รายละเอียด : ${r.descriiption || '-'}</div>
+              <div>พนักงานที่รับผิดชอบ : <strong>${r.staff_name || 'ยังไม่ระบุ'}</strong></div>
+            </div>
+            <div style="font-size:0.8rem; color:#dc2626; font-weight:600; margin-top:8px; padding:6px 10px; background:#fee2e2; border-radius:8px;">
+              ⚠️ ต้องยืนยัน/ทำรายการคิวที่ #${firstReport.report_id} ให้เสร็จสิ้นก่อน จึงจะสามารถรับคิวนี้ได้
+            </div>
+            <button class="btn-figma-secondary margin-top-md" disabled style="opacity:0.5; cursor:not-allowed; width:100%;">
+              <i data-lucide="lock"></i> ล็อค (ต้องยืนยันคิวแรกก่อน)
+            </button>
+          </div>
+        `;
+      }
+    }).join('');
 
     createIcons({ icons });
 
@@ -892,6 +1172,7 @@ export async function refreshAllUI() {
   await loadWasteRates();
   await loadRewards();
   await loadRedemptionsHistory();
+  await loadSellerQueueStatus();
   await loadPickupQueue();
   await loadUserWasteStats();
   if (currentRole === 'admin') {

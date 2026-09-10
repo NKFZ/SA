@@ -126,38 +126,62 @@
           <i data-lucide="calendar"></i> สถานะการเรียกรถรับซื้อขยะ
         </div>
 
-        <!-- Queue Status Card (Figma Style) -->
-        <div class="queue-status-card">
-          <div class="queue-header-date" id="queue-date-display">📅 นัดหมาย: วันนี้ 10:30 น.</div>
-          <div class="queue-number-val" id="queue-no-display">Queue Number : A-090</div>
+        <!-- Queue Status Card (Figma Style) - ข้อ 11 -->
+        <div class="queue-status-card" id="seller-queue-status-card">
+          <div class="queue-header-date" id="queue-date-display">📅 ยังไม่มีนัดหมาย</div>
+          <div class="queue-number-val" id="queue-no-display">Queue Number : -</div>
           
-          <div class="queue-dot-status">
-            <div class="status-dot active"></div>
-            <span id="queue-status-text">Status: Waiting (กำลังรอพนักงาน)</span>
+          <div class="queue-dot-status" id="queue-dot-status-wrap">
+            <div class="status-dot" id="queue-status-dot"></div>
+            <span id="queue-status-text">สถานะ: ยังไม่ได้เรียกพนักงาน</span>
           </div>
 
-          <div class="queue-est-time">
-            ⏱️ Estimated Time: 15 mins (พนักงานใกล้ถึงแล้ว)
+          <!-- Staff Information Box (แสดงชื่อและเบอร์โทรพนักงานที่มารับ - ข้อ 11) -->
+          <div id="queue-staff-info-container" style="display:none; margin-top:14px; padding:12px 14px; background:rgba(255,255,255,0.18); border-radius:12px; font-size:0.875rem; text-align:left; line-height:1.7;">
+            <div>👷‍♂️ <strong>พนักงานผู้รับงาน:</strong> <span id="queue-staff-name-val" style="font-weight:700; color:#fff;">-</span></div>
+            <div>📞 <strong>เบอร์โทรศัพท์ติดต่อ:</strong> <a id="queue-staff-phone-val" href="#" style="color:#ffffff; font-weight:700; text-decoration:underline;">-</a></div>
+            <div>📍 <strong>สถานที่นัดหมาย:</strong> <span id="queue-location-val">-</span></div>
+            <div>📝 <strong>รายละเอียด:</strong> <span id="queue-desc-val">-</span></div>
+          </div>
+
+          <div class="queue-est-time" id="queue-est-time-display" style="display:none;">
+            ⏱️ Estimated Time: 15-30 นาที (พนักงานกำลังเดินทางมารับซื้อ)
+          </div>
+
+          <div id="queue-empty-prompt" style="font-size:0.825rem; opacity:0.9; margin-top:8px;">
+            💡 คุณยังไม่มีคิวที่รอดำเนินการ สามารถกรอกที่อยู่และส่งคำขอด้านล่างเพื่อเรียกรถรับซื้อขยะได้ทันที
           </div>
         </div>
 
         <!-- Request Pickup Form (Connected to garbage_reports DB) -->
-        <div class="figma-card">
-          <h3>ส่งคำขอเรียกรถรับขยะใหม่</h3>
+        <div class="figma-card" id="seller-pickup-form-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <h3>ส่งคำขอเรียกรถรับขยะใหม่</h3>
+            <button type="button" class="btn-figma-secondary" id="btn-save-address-quick" onclick="saveUserAddressFromForm()" style="font-size:0.75rem; padding:4px 10px;" title="บันทึกที่อยู่นี้เป็นที่อยู่เริ่มต้นของฉัน">
+              <i data-lucide="bookmark"></i> บันทึกที่อยู่เริ่มต้น
+            </button>
+          </div>
+
+          <!-- Active Queue Warning Banner (ข้อ 21) -->
+          <div id="queue-active-lock-banner" style="display:none; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px; margin-top:12px; color:#92400e; font-size:0.85rem;">
+            <strong>⚠️ คุณมีคิวที่กำลังรอดำเนินการอยู่</strong>
+            <p style="margin-top:4px; font-size:0.8rem; color:#b45309;">ระบบจำกัด 1 ผู้ขายสามารถเรียกพนักงานได้ครั้งละ 1 คิวเท่านั้น ไม่สามารถเรียกซ้ำได้จนกว่าพนักงานจะยืนยัน/ทำรายการเสร็จสิ้น</p>
+          </div>
+
           <form id="seller-pickup-form" class="margin-top-md" onsubmit="handleSellerPickupSubmit(event)">
             <div class="figma-form-item">
               <span class="figma-form-label">📍 ที่อยู่นัดหมาย:</span>
-              <input type="text" id="input-pickup-address" class="figma-input-box" style="width:200px;" value="45/2 ซอย 8 กรุงเทพฯ" required />
+              <input type="text" id="input-pickup-address" class="figma-input-box" style="width:220px;" placeholder="กรอกที่อยู่นัดหมายของคุณ" required />
             </div>
             <div class="figma-form-item">
               <span class="figma-form-label">📝 รายละเอียดขยะ:</span>
-              <input type="text" id="input-pickup-desc" class="figma-input-box" style="width:200px;" value="ขวดพลาสติก 3 ถุง ลังกระดาษ 5 kg" />
+              <input type="text" id="input-pickup-desc" class="figma-input-box" style="width:220px;" placeholder="เช่น ขวดพลาสติก 3 ถุง ลังกระดาษ 5 kg" />
             </div>
             <div class="figma-form-item">
               <span class="figma-form-label">📞 เบอร์โทรศัพท์:</span>
-              <input type="tel" id="input-pickup-phone" class="figma-input-box" style="width:140px;" value="089-765-4321" required />
+              <input type="tel" id="input-pickup-phone" class="figma-input-box" style="width:160px;" placeholder="เช่น 0812345678" required />
             </div>
-            <button type="submit" class="btn-figma-primary margin-top-md">
+            <button type="submit" id="btn-submit-pickup" class="btn-figma-primary margin-top-md">
               <i data-lucide="send"></i> ยืนยันเรียกรถรับขยะ (บันทึกลงระบบ)
             </button>
           </form>
@@ -307,6 +331,27 @@
           </div>
         </div>
 
+        <!-- User Saved Default Address Card (ข้อ 14) -->
+        <div class="figma-card">
+          <div class="figma-section-title">
+            <i data-lucide="map-pin"></i> ข้อมูลที่อยู่เริ่มต้นสำหรับเรียกรถ
+          </div>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+            บันทึกที่อยู่นี้ไว้ เพื่อให้ระบบกรอกที่อยู่ให้อัตโนมัติเมื่อเรียกรถรับซื้อขยะ
+          </p>
+          <div class="figma-form-item margin-top-md">
+            <span class="figma-form-label">📍 ที่อยู่เริ่มต้น:</span>
+            <input type="text" id="profile-input-address" class="figma-input-box" style="width:100%;" placeholder="กรุณากรอกที่อยู่ของคุณ เช่น 45/2 ซอย 8 กรุงเทพฯ" />
+          </div>
+          <div class="figma-form-item">
+            <span class="figma-form-label">📞 เบอร์โทรศัพท์:</span>
+            <input type="tel" id="profile-input-phone" class="figma-input-box" style="width:100%;" placeholder="เช่น 0812345678" />
+          </div>
+          <button type="button" class="btn-figma-primary margin-top-md" onclick="saveUserAddressFromProfile()">
+            <i data-lucide="save"></i> บันทึกข้อมูลที่อยู่เริ่มต้น
+          </button>
+        </div>
+
         <!-- World Saving Analytics Card -->
         <div class="figma-card">
           <h3 class="text-center">World Saving Statistics</h3>
@@ -415,9 +460,14 @@
           <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">✨ สะสมแต้มอย่างเดียวเพื่อนำไปแลกของรางวัล</p>
         </div>
 
-        <button class="btn-figma-primary" id="btn-emp-generate-qr">
-          <i data-lucide="qr-code"></i> Generate QR Code
-        </button>
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <button class="btn-figma-primary" id="btn-emp-generate-qr" style="flex:1;">
+            <i data-lucide="qr-code"></i> Generate QR Code
+          </button>
+          <button type="button" class="btn-figma-secondary" id="btn-emp-direct-confirm" onclick="handleDirectConfirmQueue()" style="flex:1;" title="ยืนยันคิวนี้เสร็จสิ้นทันที">
+            <i data-lucide="check-circle-2"></i> Confirm Queue
+          </button>
+        </div>
       </section>
 
       <!-- Employee View 3: QR Code Display (Figma Employee QR) -->

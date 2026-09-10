@@ -87,10 +87,56 @@ async function initDatabase() {
       await execute("INSERT INTO admins (admin_name) VALUES (?)", ['Admin (ผู้ดูแลระบบ)']);
     }
 
+    // Auto-migrate new columns
+    try { await execute('ALTER TABLE user ADD COLUMN address TEXT'); } catch(e) {}
+    try { await execute('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER'); } catch(e) {}
+    try { await execute('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT'); } catch(e) {}
+
     console.log('[Server] Database initialized successfully.');
   } catch (err) {
     console.error('[Server] Database initialization warning:', err.message);
   }
+}
+
+// Helper: สุ่มยัดงานให้พนักงานโดยยึดคนที่มี queue น้อยที่สุด (ข้อ 19)
+async function assignStaffWithLeastQueues() {
+  const allStaffs = await queryAll('SELECT * FROM staffs');
+  if (!allStaffs || allStaffs.length === 0) {
+    return null;
+  }
+
+  // นับจำนวนคิวที่ยังค้างอยู่ (status = 'Waiting') ของพนักงานแต่ละคน
+  const queueCounts = await queryAll(`
+    SELECT staff_id, COUNT(*) as count 
+    FROM garbage_reports 
+    WHERE status = 'Waiting' AND staff_id IS NOT NULL
+    GROUP BY staff_id
+  `);
+
+  const countMap = {};
+  for (const s of allStaffs) {
+    countMap[s.staff_id] = 0;
+  }
+  for (const row of queueCounts) {
+    if (countMap[row.staff_id] !== undefined) {
+      countMap[row.staff_id] = Number(row.count);
+    }
+  }
+
+  // หาจำนวนคิวต่ำสุด
+  let minCount = Infinity;
+  for (const s of allStaffs) {
+    if (countMap[s.staff_id] < minCount) {
+      minCount = countMap[s.staff_id];
+    }
+  }
+
+  // กรองพนักงานทุกคนที่มีคิวน้อยที่สุดเท่ากัน
+  const candidateStaffs = allStaffs.filter(s => countMap[s.staff_id] === minCount);
+
+  // สุ่มเลือก 1 คนจากกลุ่มนี้
+  const picked = candidateStaffs[Math.floor(Math.random() * candidateStaffs.length)];
+  return picked;
 }
 
 // -------------------------------------------------------------
@@ -422,14 +468,38 @@ app.get('/api/redemptions/:id', async (req, res) => {
   }
 });
 
+// 6.5. SAVE USER DEFAULT ADDRESS & PHONE (ข้อ 14)
+app.post('/api/user/address', async (req, res) => {
+  try {
+    const { userId, address, phone } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userId' });
+    }
+    if (address !== undefined) {
+      await execute('UPDATE user SET address = ? WHERE user_id = ?', [address.trim(), userId]);
+    }
+    if (phone !== undefined) {
+      await execute('UPDATE user SET phone = ? WHERE user_id = ?', [phone.trim(), userId]);
+    }
+    const user = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. GARBAGE REPORTS / PICKUP REQUESTS
 app.get('/api/pickup', async (req, res) => {
   try {
     const reports = await queryAll(`
-      SELECT g.*, u.name as user_name, u.phone as user_phone, l.location_name
+      SELECT g.*, 
+             u.name as user_name, u.phone as user_phone, 
+             l.location_name,
+             s.staff_name, s.phone as staff_phone
       FROM garbage_reports g
       LEFT JOIN user u ON g.user_id = u.user_id
       LEFT JOIN locations l ON g.location_id = l.location_id
+      LEFT JOIN staffs s ON g.staff_id = s.staff_id
       ORDER BY g.report_id DESC
     `);
     res.json({ reports });
@@ -438,9 +508,89 @@ app.get('/api/pickup', async (req, res) => {
   }
 });
 
+// ดูสถานะคิวปัจจุบันของผู้ใช้คนขาย (ข้อ 11)
+app.get('/api/pickup/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const activeReport = await queryOne(`
+      SELECT g.*, 
+             u.name as user_name, u.phone as user_phone, 
+             l.location_name,
+             s.staff_name, s.phone as staff_phone
+      FROM garbage_reports g
+      LEFT JOIN user u ON g.user_id = u.user_id
+      LEFT JOIN locations l ON g.location_id = l.location_id
+      LEFT JOIN staffs s ON g.staff_id = s.staff_id
+      WHERE g.user_id = ? AND g.status = 'Waiting'
+      ORDER BY g.report_id DESC
+      LIMIT 1
+    `, [userId]);
+
+    res.json({ report: activeReport || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ยืนยันคิวเสร็จสิ้น (Confirm Queue - ข้อ 20)
+app.post('/api/pickup/confirm', async (req, res) => {
+  try {
+    const { reportId, staffId } = req.body;
+    if (!reportId) {
+      return res.status(400).json({ error: 'Missing reportId' });
+    }
+
+    await execute("UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?", [reportId]);
+    const report = await queryOne(`
+      SELECT g.*, 
+             u.name as user_name, u.phone as user_phone, 
+             l.location_name,
+             s.staff_name, s.phone as staff_phone
+      FROM garbage_reports g
+      LEFT JOIN user u ON g.user_id = u.user_id
+      LEFT JOIN locations l ON g.location_id = l.location_id
+      LEFT JOIN staffs s ON g.staff_id = s.staff_id
+      WHERE g.report_id = ?
+    `, [reportId]);
+
+    if (staffId) {
+      try {
+        await execute(
+          "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+          [staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''}`]
+        );
+      } catch (e) {}
+    }
+
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/pickup', async (req, res) => {
   try {
-    const { userId, title, description, locationName = 'กรุงเทพฯ' } = req.body;
+    const { userId, title, description, locationName = 'กรุงเทพฯ', phone } = req.body;
+    const uid = userId || 1;
+
+    // ข้อ 21: seller 1 คนสามารถกดเรียกพนักงานได้ครั้งเดียว ไม่สามารถกดซ้ำได้จนกว่าพนักงานจะ confirm queue
+    const existing = await queryOne(
+      "SELECT * FROM garbage_reports WHERE user_id = ? AND status = 'Waiting' LIMIT 1",
+      [uid]
+    );
+    if (existing) {
+      return res.status(400).json({ 
+        error: `คุณมีคิวที่กำลังรอรับบริการอยู่แล้ว (คำขอ #${existing.report_id}) ไม่สามารถเรียกรถซ้ำได้ จนกว่าพนักงานจะยืนยันเสร็จสิ้น` 
+      });
+    }
+
+    // ข้อ 14: บันทึกที่อยู่เริ่มต้นและเบอร์โทรของผู้ใช้
+    if (locationName && locationName.trim()) {
+      await execute('UPDATE user SET address = ? WHERE user_id = ?', [locationName.trim(), uid]);
+    }
+    if (phone && phone.trim()) {
+      await execute('UPDATE user SET phone = ? WHERE user_id = ?', [phone.trim(), uid]);
+    }
 
     let loc = await queryOne('SELECT * FROM locations WHERE location_name = ?', [locationName]);
     if (!loc) {
@@ -448,13 +598,28 @@ app.post('/api/pickup', async (req, res) => {
       loc = { location_id: Number(resLoc.lastInsertRowid) };
     }
 
+    // ข้อ 19: สุ่มยัดงานให้พนักงานโดยยึดคนที่มี queue น้อยที่สุด
+    const assignedStaff = await assignStaffWithLeastQueues();
+    const staffId = assignedStaff ? assignedStaff.staff_id : null;
+
     const insertReport = await execute(
-      'INSERT INTO garbage_reports (user_id, location_id, title, descriiption, reward_point, status) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId || 1, loc.location_id, title || 'เรียกรถรับซื้อขยะ', description || '', 0, 'Waiting']
+      'INSERT INTO garbage_reports (user_id, staff_id, location_id, title, descriiption, reward_point, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
+      [uid, staffId, loc.location_id, title || 'เรียกรถรับซื้อขยะ', description || '', 0, 'Waiting']
     );
 
-    const newReport = await queryOne('SELECT * FROM garbage_reports WHERE report_id = ?', [Number(insertReport.lastInsertRowid)]);
-    res.json({ success: true, report: newReport });
+    const newReport = await queryOne(`
+      SELECT g.*, 
+             u.name as user_name, u.phone as user_phone, 
+             l.location_name,
+             s.staff_name, s.phone as staff_phone
+      FROM garbage_reports g
+      LEFT JOIN user u ON g.user_id = u.user_id
+      LEFT JOIN locations l ON g.location_id = l.location_id
+      LEFT JOIN staffs s ON g.staff_id = s.staff_id
+      WHERE g.report_id = ?
+    `, [Number(insertReport.lastInsertRowid)]);
+
+    res.json({ success: true, report: newReport, assignedStaff });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -472,16 +637,23 @@ app.post('/api/points/add', async (req, res) => {
       organicKg = 0,
       generalKg = 0,
       hazardousKg = 0,
-      totalWeight = 0
+      totalWeight = 0,
+      targetUserId = null,
+      reportId = null
     } = req.body;
 
     if (!userId || !points) {
       return res.status(400).json({ error: 'Missing userId or points' });
     }
 
+    // ข้อ 12: ตรวจสอบถ้าไม่ได้สแกนของตัวเอง จะไม่ได้คะแนน
+    if (targetUserId && Number(targetUserId) !== Number(userId)) {
+      return res.status(403).json({ error: 'ไม่สามารถรับคะแนนได้: QR Code นี้ไม่ได้สร้างสำหรับบัญชีของคุณ' });
+    }
+
     const totalKg = totalWeight > 0 ? totalWeight : (recycleKg + organicKg + generalKg + hazardousKg);
 
-    await db.batch([
+    const batchOps = [
       { sql: 'UPDATE user SET points = points + ? WHERE user_id = ?', args: [points, userId] },
       { 
         sql: 'INSERT INTO waste_history (user_id, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned) VALUES (?, ?, ?, ?, ?, ?, ?)', 
@@ -491,7 +663,22 @@ app.post('/api/points/add', async (req, res) => {
         sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))", 
         args: [staffId, 1, `โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`] 
       }
-    ]);
+    ];
+
+    // ปรับสถานะคิวเป็น Completed เมื่อรับแต้มเสร็จสิ้น
+    if (reportId) {
+      batchOps.push({
+        sql: "UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?",
+        args: [reportId]
+      });
+    } else {
+      batchOps.push({
+        sql: "UPDATE garbage_reports SET status = 'Completed' WHERE user_id = ? AND status = 'Waiting'",
+        args: [userId]
+      });
+    }
+
+    await db.batch(batchOps);
 
     const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
     res.json({ success: true, user: updatedUser });

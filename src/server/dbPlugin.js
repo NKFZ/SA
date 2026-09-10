@@ -87,9 +87,47 @@ export function dbApiPlugin() {
       db.prepare("INSERT INTO locations (location_name) VALUES (?)").run('กรุงเทพฯ และปริมณฑล');
     }
 
+    // Auto-migrate new columns
+    try { db.prepare('ALTER TABLE user ADD COLUMN address TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT').run(); } catch(e) {}
+
     console.log(`[DB Plugin] Connected to SQLite database at: ${dbPath}`);
   } catch (err) {
     console.error('[DB Plugin] Database connection error:', err);
+  }
+
+  // Helper: สุ่มยัดงานให้พนักงานโดยยึดคนที่มี queue น้อยที่สุด (ข้อ 19)
+  function assignStaffWithLeastQueues() {
+    const allStaffs = db.prepare("SELECT * FROM staffs").all();
+    if (!allStaffs || allStaffs.length === 0) return null;
+
+    const queueCounts = db.prepare(`
+      SELECT staff_id, COUNT(*) as count 
+      FROM garbage_reports 
+      WHERE status = 'Waiting' AND staff_id IS NOT NULL
+      GROUP BY staff_id
+    `).all();
+
+    const countMap = {};
+    for (const s of allStaffs) {
+      countMap[s.staff_id] = 0;
+    }
+    for (const row of queueCounts) {
+      if (countMap[row.staff_id] !== undefined) {
+        countMap[row.staff_id] = Number(row.count);
+      }
+    }
+
+    let minCount = Infinity;
+    for (const s of allStaffs) {
+      if (countMap[s.staff_id] < minCount) {
+        minCount = countMap[s.staff_id];
+      }
+    }
+
+    const candidateStaffs = allStaffs.filter(s => countMap[s.staff_id] === minCount);
+    return candidateStaffs[Math.floor(Math.random() * candidateStaffs.length)];
   }
 
   return {
@@ -405,20 +443,107 @@ export function dbApiPlugin() {
             return sendJson({ history });
           }
 
+          // 6.5. SAVE USER DEFAULT ADDRESS & PHONE (ข้อ 14)
+          if (pathname === '/api/user/address' && method === 'POST') {
+            const { userId, address, phone } = await parseBody();
+            if (!userId) {
+              return sendJson({ error: 'Missing userId' }, 400);
+            }
+            if (address !== undefined) {
+              db.prepare('UPDATE user SET address = ? WHERE user_id = ?').run(address.trim(), userId);
+            }
+            if (phone !== undefined) {
+              db.prepare('UPDATE user SET phone = ? WHERE user_id = ?').run(phone.trim(), userId);
+            }
+            const user = db.prepare('SELECT * FROM user WHERE user_id = ?').get(userId);
+            return sendJson({ success: true, user });
+          }
+
           // 7. GARBAGE REPORTS / PICKUP REQUESTS
           if (pathname === '/api/pickup' && method === 'GET') {
             const reports = db.prepare(`
-              SELECT g.*, u.name as user_name, u.phone as user_phone, l.location_name
+              SELECT g.*, 
+                     u.name as user_name, u.phone as user_phone, 
+                     l.location_name,
+                     s.staff_name, s.phone as staff_phone
               FROM garbage_reports g
               LEFT JOIN user u ON g.user_id = u.user_id
               LEFT JOIN locations l ON g.location_id = l.location_id
+              LEFT JOIN staffs s ON g.staff_id = s.staff_id
               ORDER BY g.report_id DESC
             `).all();
             return sendJson({ reports });
           }
 
+          // ดูสถานะคิวปัจจุบันของผู้ใช้คนขาย (ข้อ 11)
+          if (pathname.startsWith('/api/pickup/user/') && method === 'GET') {
+            const userId = pathname.replace('/api/pickup/user/', '');
+            const activeReport = db.prepare(`
+              SELECT g.*, 
+                     u.name as user_name, u.phone as user_phone, 
+                     l.location_name,
+                     s.staff_name, s.phone as staff_phone
+              FROM garbage_reports g
+              LEFT JOIN user u ON g.user_id = u.user_id
+              LEFT JOIN locations l ON g.location_id = l.location_id
+              LEFT JOIN staffs s ON g.staff_id = s.staff_id
+              WHERE g.user_id = ? AND g.status = 'Waiting'
+              ORDER BY g.report_id DESC
+              LIMIT 1
+            `).get(userId);
+            return sendJson({ report: activeReport || null });
+          }
+
+          // ยืนยันคิวเสร็จสิ้น (Confirm Queue - ข้อ 20)
+          if (pathname === '/api/pickup/confirm' && method === 'POST') {
+            const { reportId, staffId } = await parseBody();
+            if (!reportId) {
+              return sendJson({ error: 'Missing reportId' }, 400);
+            }
+            db.prepare("UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?").run(reportId);
+            const report = db.prepare(`
+              SELECT g.*, 
+                     u.name as user_name, u.phone as user_phone, 
+                     l.location_name,
+                     s.staff_name, s.phone as staff_phone
+              FROM garbage_reports g
+              LEFT JOIN user u ON g.user_id = u.user_id
+              LEFT JOIN locations l ON g.location_id = l.location_id
+              LEFT JOIN staffs s ON g.staff_id = s.staff_id
+              WHERE g.report_id = ?
+            `).get(reportId);
+
+            if (staffId) {
+              try {
+                db.prepare(
+                  "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
+                ).run(staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''}`);
+              } catch (e) {}
+            }
+            return sendJson({ success: true, report });
+          }
+
           if (pathname === '/api/pickup' && method === 'POST') {
-            const { userId, title, description, locationName = 'กรุงเทพฯ' } = await parseBody();
+            const { userId, title, description, locationName = 'กรุงเทพฯ', phone } = await parseBody();
+            const uid = userId || 1;
+
+            // ข้อ 21: seller 1 คนสามารถกดเรียกพนักงานได้ครั้งเดียว ไม่สามารถกดซ้ำได้จนกว่าพนักงานจะ confirm queue
+            const existing = db.prepare(
+              "SELECT * FROM garbage_reports WHERE user_id = ? AND status = 'Waiting' LIMIT 1"
+            ).get(uid);
+            if (existing) {
+              return sendJson({ 
+                error: `คุณมีคิวที่กำลังรอรับบริการอยู่แล้ว (คำขอ #${existing.report_id}) ไม่สามารถเรียกรถซ้ำได้ จนกว่าพนักงานจะยืนยันเสร็จสิ้น` 
+              }, 400);
+            }
+
+            // ข้อ 14: บันทึกที่อยู่เริ่มต้นและเบอร์โทรของผู้ใช้
+            if (locationName && locationName.trim()) {
+              db.prepare('UPDATE user SET address = ? WHERE user_id = ?').run(locationName.trim(), uid);
+            }
+            if (phone && phone.trim()) {
+              db.prepare('UPDATE user SET phone = ? WHERE user_id = ?').run(phone.trim(), uid);
+            }
 
             let loc = db.prepare("SELECT * FROM locations WHERE location_name = ?").get(locationName);
             if (!loc) {
@@ -426,12 +551,27 @@ export function dbApiPlugin() {
               loc = { location_id: resLoc.lastInsertRowid };
             }
 
-            const insertReport = db.prepare(
-              "INSERT INTO garbage_reports (user_id, location_id, title, descriiption, reward_point, status) VALUES (?, ?, ?, ?, ?, ?)"
-            ).run(userId || 1, loc.location_id, title || 'เรียกรถรับซื้อขยะ', description || '', 0, 'Waiting');
+            // ข้อ 19: สุ่มยัดงานให้พนักงานโดยยึดคนที่มี queue น้อยที่สุด
+            const assignedStaff = assignStaffWithLeastQueues();
+            const staffId = assignedStaff ? assignedStaff.staff_id : null;
 
-            const newReport = db.prepare("SELECT * FROM garbage_reports WHERE report_id = ?").get(insertReport.lastInsertRowid);
-            return sendJson({ success: true, report: newReport });
+            const insertReport = db.prepare(
+              "INSERT INTO garbage_reports (user_id, staff_id, location_id, title, descriiption, reward_point, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))"
+            ).run(uid, staffId, loc.location_id, title || 'เรียกรถรับซื้อขยะ', description || '', 0, 'Waiting');
+
+            const newReport = db.prepare(`
+              SELECT g.*, 
+                     u.name as user_name, u.phone as user_phone, 
+                     l.location_name,
+                     s.staff_name, s.phone as staff_phone
+              FROM garbage_reports g
+              LEFT JOIN user u ON g.user_id = u.user_id
+              LEFT JOIN locations l ON g.location_id = l.location_id
+              LEFT JOIN staffs s ON g.staff_id = s.staff_id
+              WHERE g.report_id = ?
+            `).get(insertReport.lastInsertRowid);
+
+            return sendJson({ success: true, report: newReport, assignedStaff });
           }
 
           // 8. ADD REWARD POINTS & RECORD WASTE STATS
@@ -445,11 +585,18 @@ export function dbApiPlugin() {
               organicKg = 0,
               generalKg = 0,
               hazardousKg = 0,
-              totalWeight = 0
+              totalWeight = 0,
+              targetUserId = null,
+              reportId = null
             } = await parseBody();
 
             if (!userId || !points) {
               return sendJson({ error: 'Missing userId or points' }, 400);
+            }
+
+            // ข้อ 12: ตรวจสอบถ้าไม่ได้สแกนของตัวเอง จะไม่ได้คะแนน
+            if (targetUserId && Number(targetUserId) !== Number(userId)) {
+              return sendJson({ error: 'ไม่สามารถรับคะแนนได้: QR Code นี้ไม่ได้สร้างสำหรับบัญชีของคุณ' }, 403);
             }
 
             const totalKg = totalWeight > 0 ? totalWeight : (recycleKg + organicKg + generalKg + hazardousKg);
@@ -464,6 +611,13 @@ export function dbApiPlugin() {
             db.prepare(
               "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
             ).run(staffId, 1, `โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`);
+
+            // ปรับสถานะคิวเป็น Completed เมื่อรับแต้มเสร็จสิ้น
+            if (reportId) {
+              db.prepare("UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?").run(reportId);
+            } else {
+              db.prepare("UPDATE garbage_reports SET status = 'Completed' WHERE user_id = ? AND status = 'Waiting'").run(userId);
+            }
 
             const updatedUser = db.prepare("SELECT * FROM user WHERE user_id = ?").get(userId);
             return sendJson({ success: true, user: updatedUser });

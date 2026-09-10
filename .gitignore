@@ -1,9 +1,9 @@
-﻿node_modules/
+node_modules/
 dist/
 .env
-DB/*.db
-DB/*.db-journal
-DB/*.db-wal
-DB/*.db-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 migrate_to_turso.js
 .DS_Store
