@@ -140,6 +140,46 @@ async function assignStaffWithLeastQueues() {
   return picked;
 }
 
+// Helper: ดึง staff_id และ location_id ที่มีอยู่จริงเพื่อป้องกัน Foreign Key Constraint Error
+async function getValidStaffAndLocation(preferredStaffId = null, preferredLocId = null) {
+  let staffId = preferredStaffId;
+  let locId = preferredLocId;
+
+  if (staffId) {
+    const s = await queryOne('SELECT staff_id FROM staffs WHERE staff_id = ?', [staffId]);
+    if (!s) staffId = null;
+  }
+  if (!staffId) {
+    const s = await queryOne('SELECT staff_id FROM staffs ORDER BY staff_id ASC LIMIT 1');
+    staffId = s ? s.staff_id : null;
+  }
+
+  if (locId) {
+    const l = await queryOne('SELECT location_id FROM locations WHERE location_id = ?', [locId]);
+    if (!l) locId = null;
+  }
+  if (!locId) {
+    const l = await queryOne('SELECT location_id FROM locations ORDER BY location_id ASC LIMIT 1');
+    locId = l ? l.location_id : null;
+  }
+
+  return { staffId, locId };
+}
+
+async function safeLogHistory(actionText, preferredStaffId = null, preferredLocId = null) {
+  try {
+    const { staffId, locId } = await getValidStaffAndLocation(preferredStaffId, preferredLocId);
+    if (staffId && locId) {
+      await execute(
+        "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+        [staffId, locId, actionText]
+      );
+    }
+  } catch (err) {
+    console.warn('[SafeLogHistory Warning]:', err.message);
+  }
+}
+
 // -------------------------------------------------------------
 // API ENDPOINTS
 // -------------------------------------------------------------
@@ -250,7 +290,7 @@ app.post('/api/login/admin', async (req, res) => {
 
     if (trimmed.toLowerCase() !== 'admin' || trimmedPass !== 'admin01') {
       return res.status(401).json({ 
-        error: 'สิทธิ์การเข้าถึงถูกปฏิเสธ: ต้องระบุชื่อเป็น "admin" และรหัสผ่าน "admin01" เท่านั้น' 
+        error: 'สิทธิ์การเข้าถึงถูกปฏิเสธ: ชื่อผู้ใช้หรือรหัสผ่านผู้ดูแลระบบไม่ถูกต้อง' 
       });
     }
 
@@ -386,11 +426,7 @@ app.post('/api/admin/rewards/add', async (req, res) => {
       [trimmedName, numPoints, numStock, trimmedImage]
     );
     const newReward = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [Number(insertRes.lastInsertRowid)]);
-
-    await execute(
-      "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
-      [1, 1, `แอดมินเพิ่มของรางวัลใหม่: "${trimmedName}" (${numStock} ชิ้น, ใช้ ${numPoints} แต้ม)`]
-    );
+    await safeLogHistory(`แอดมินเพิ่มของรางวัลใหม่: "${trimmedName}" (${numStock} ชิ้น, ใช้ ${numPoints} แต้ม)`);
 
     res.json({ 
       success: true, 
@@ -593,12 +629,11 @@ app.post('/api/pickup/reject', async (req, res) => {
 
     const report = await queryOne('SELECT * FROM garbage_reports WHERE report_id = ?', [reportId]);
     if (report && report.staff_id) {
-      try {
-        await execute(
-          "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
-          [report.staff_id, report.location_id || 1, `ลูกค้า #${userId || report.user_id} ปฏิเสธแต้มในคิว #${reportId} (${reason || 'ปฏิเสธแต้ม'})`]
-        );
-      } catch (e) {}
+      await safeLogHistory(
+        `ลูกค้า #${userId || report.user_id} ปฏิเสธแต้มในคิว #${reportId} (${reason || 'ปฏิเสธแต้ม'})`,
+        report.staff_id,
+        report.location_id || 1
+      );
     }
 
     res.json({ success: true, message: 'บันทึกการปฏิเสธแต้มเรียบร้อยแล้ว' });
@@ -642,12 +677,11 @@ app.post('/api/pickup/confirm', async (req, res) => {
     `, [reportId]);
 
     if (staffId) {
-      try {
-        await execute(
-          "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
-          [staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''} (ผลการตัดสินใจลูกค้า: ${currentRep.seller_decision})`]
-        );
-      } catch (e) {}
+      await safeLogHistory(
+        `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''} (ผลการตัดสินใจลูกค้า: ${currentRep.seller_decision})`,
+        staffId,
+        report ? report.location_id : 1
+      );
     }
 
     res.json({ success: true, report });
@@ -746,10 +780,6 @@ app.post('/api/points/add', async (req, res) => {
       { 
         sql: 'INSERT INTO waste_history (user_id, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned) VALUES (?, ?, ?, ?, ?, ?, ?)', 
         args: [userId, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points] 
-      },
-      { 
-        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))", 
-        args: [staffId, 1, `โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`] 
       }
     ];
 
@@ -767,6 +797,8 @@ app.post('/api/points/add', async (req, res) => {
     }
 
     await db.batch(batchOps);
+
+    await safeLogHistory(`โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`, staffId, 1);
 
     const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
     res.json({ success: true, user: updatedUser });
@@ -862,13 +894,8 @@ app.post('/api/admin/user/adjust-points', async (req, res) => {
     }
     if (newPoints < 0) newPoints = 0;
 
-    await db.batch([
-      { sql: 'UPDATE user SET points = ? WHERE user_id = ?', args: [newPoints, targetUser.user_id] },
-      {
-        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
-        args: [1, 1, `แอดมินปรับคะแนนผู้ใช้ "${targetUser.username}" จาก ${targetUser.points} เป็น ${newPoints} แต้ม`]
-      }
-    ]);
+    await execute('UPDATE user SET points = ? WHERE user_id = ?', [newPoints, targetUser.user_id]);
+    await safeLogHistory(`แอดมินปรับคะแนนผู้ใช้ "${targetUser.username}" จาก ${targetUser.points} เป็น ${newPoints} แต้ม`);
 
     const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [targetUser.user_id]);
     res.json({ 
@@ -894,12 +921,10 @@ app.post('/api/admin/user/delete', async (req, res) => {
       { sql: 'DELETE FROM redemptions WHERE user_id = ?', args: [userId] },
       { sql: 'DELETE FROM waste_history WHERE user_id = ?', args: [userId] },
       { sql: 'DELETE FROM garbage_reports WHERE user_id = ?', args: [userId] },
-      { sql: 'DELETE FROM user WHERE user_id = ?', args: [userId] },
-      {
-        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
-        args: [1, 1, `แอดมินลบผู้ใช้ "${targetUser.username}" (ID: ${userId}) ออกจากระบบ`]
-      }
+      { sql: 'DELETE FROM user WHERE user_id = ?', args: [userId] }
     ]);
+
+    await safeLogHistory(`แอดมินลบผู้ใช้ "${targetUser.username}" (ID: ${userId}) ออกจากระบบ`);
 
     res.json({ success: true, message: `ลบผู้ใช้งาน "${targetUser.username}" ออกจากระบบสำเร็จ!` });
   } catch (err) {
@@ -927,19 +952,15 @@ app.post('/api/admin/staff/delete', async (req, res) => {
   }
 });
 
-// 15. ADMIN: CLEAR ALL QUEUES (ล้างคิวทั้งหมดของพนักงานทิ้ง - ข้อ 25)
+// 15. ADMIN: CLEAR ALL QUEUES (ล้างคิวทั้งหมดของพนักงานทิ้ง - ข้อ 25 & ข้อ 26)
 app.post('/api/admin/queues/clear', async (req, res) => {
   try {
     const queueCountRes = await queryOne('SELECT COUNT(*) as count FROM garbage_reports');
     const totalDeleted = queueCountRes ? queueCountRes.count : 0;
 
-    await db.batch([
-      { sql: 'DELETE FROM garbage_reports', args: [] },
-      { 
-        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))", 
-        args: [1, 1, `แอดมินล้างคิวคำขอรับซื้อขยะของพนักงานทั้งหมด (${totalDeleted} รายการ)`] 
-      }
-    ]);
+    await execute('DELETE FROM garbage_reports');
+
+    await safeLogHistory(`แอดมินล้างคิวคำขอรับซื้อขยะของพนักงานทั้งหมด (${totalDeleted} รายการ)`);
 
     res.json({ success: true, message: `ล้างคิวของพนักงานทั้งหมดสำเร็จแล้ว (${totalDeleted} รายการ)` });
   } catch (err) {

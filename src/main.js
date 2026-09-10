@@ -106,9 +106,12 @@ function setupLoginModalEvents() {
     } else if (role === 'admin') {
       cardAdmin?.classList.add('selected');
       if (nameLabel) nameLabel.textContent = 'ชื่อผู้ดูแลระบบ (Admin Username):';
-      if (inputName) inputName.placeholder = 'admin';
+      if (inputName) inputName.placeholder = 'กรอกชื่อผู้ดูแลระบบ';
       if (passwordGroup) passwordGroup.style.display = 'block';
-      if (inputPassword) inputPassword.required = true;
+      if (inputPassword) {
+        inputPassword.required = true;
+        inputPassword.placeholder = 'กรอกรหัสผ่านผู้ดูแลระบบ';
+      }
     }
   };
 
@@ -187,7 +190,7 @@ function setupLoginModalEvents() {
       } else if (pendingLoginRole === 'admin') {
         const inputPassword = document.getElementById('login-input-password')?.value.trim();
         if (inputName.toLowerCase() !== 'admin' || inputPassword !== 'admin01') {
-          showToast('สิทธิ์ถูกปฏิเสธ: ต้องระบุชื่อ "admin" และรหัสผ่าน "admin01" เท่านั้น', 'error');
+          showToast('สิทธิ์ถูกปฏิเสธ: ชื่อผู้ใช้หรือรหัสผ่านผู้ดูแลระบบไม่ถูกต้อง', 'error');
           return;
         }
 

@@ -131,6 +131,45 @@ export function dbApiPlugin() {
     return candidateStaffs[Math.floor(Math.random() * candidateStaffs.length)];
   }
 
+  // Helper: ดึง staff_id และ location_id ที่มีอยู่จริงเพื่อป้องกัน Foreign Key Constraint Error
+  function getValidStaffAndLocation(preferredStaffId = null, preferredLocId = null) {
+    let staffId = preferredStaffId;
+    let locId = preferredLocId;
+
+    if (staffId) {
+      const s = db.prepare('SELECT staff_id FROM staffs WHERE staff_id = ?').get(staffId);
+      if (!s) staffId = null;
+    }
+    if (!staffId) {
+      const s = db.prepare('SELECT staff_id FROM staffs ORDER BY staff_id ASC LIMIT 1').get();
+      staffId = s ? s.staff_id : null;
+    }
+
+    if (locId) {
+      const l = db.prepare('SELECT location_id FROM locations WHERE location_id = ?').get(locId);
+      if (!l) locId = null;
+    }
+    if (!locId) {
+      const l = db.prepare('SELECT location_id FROM locations ORDER BY location_id ASC LIMIT 1').get();
+      locId = l ? l.location_id : null;
+    }
+
+    return { staffId, locId };
+  }
+
+  function safeLogHistory(actionText, preferredStaffId = null, preferredLocId = null) {
+    try {
+      const { staffId, locId } = getValidStaffAndLocation(preferredStaffId, preferredLocId);
+      if (staffId && locId) {
+        db.prepare(
+          "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
+        ).run(staffId, locId, actionText);
+      }
+    } catch (err) {
+      console.warn('[SafeLogHistory Warning]:', err.message);
+    }
+  }
+
   return {
     name: 'db-api-plugin',
     configureServer(server) {
@@ -259,7 +298,7 @@ export function dbApiPlugin() {
 
             if (trimmed.toLowerCase() !== 'admin' || trimmedPass !== 'admin01') {
               return sendJson({ 
-                error: 'สิทธิ์การเข้าถึงถูกปฏิเสธ: ต้องระบุชื่อเป็น "admin" และรหัสผ่าน "admin01" เท่านั้น' 
+                error: 'สิทธิ์การเข้าถึงถูกปฏิเสธ: ชื่อผู้ใช้หรือรหัสผ่านผู้ดูแลระบบไม่ถูกต้อง' 
               }, 401);
             }
 
@@ -371,9 +410,7 @@ export function dbApiPlugin() {
             const newReward = db.prepare("SELECT * FROM rewards WHERE reward_id = ?").get(resInsert.lastInsertRowid);
 
             // Log action
-            db.prepare(
-              "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-            ).run(1, 1, `แอดมินเพิ่มของรางวัลใหม่: "${trimmedName}" (${numStock} ชิ้น, ใช้ ${numPoints} แต้ม)`);
+            safeLogHistory(`แอดมินเพิ่มของรางวัลใหม่: "${trimmedName}" (${numStock} ชิ้น, ใช้ ${numPoints} แต้ม)`);
 
             return sendJson({ 
               success: true, 
@@ -570,11 +607,7 @@ export function dbApiPlugin() {
             `).get(reportId);
 
             if (staffId) {
-              try {
-                db.prepare(
-                  "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-                ).run(staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''} (ผลการตัดสินใจของลูกค้า: ${currentRep.seller_decision})`);
-              } catch (e) {}
+              safeLogHistory(`พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''} (ผลการตัดสินใจของลูกค้า: ${currentRep.seller_decision})`, staffId, report ? report.location_id : 1);
             }
             return sendJson({ success: true, report });
           }
@@ -664,9 +697,7 @@ export function dbApiPlugin() {
               VALUES (?, ?, ?, ?, ?, ?, ?)
             `).run(userId, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points);
 
-            db.prepare(
-              "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-            ).run(staffId, 1, `โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`);
+            safeLogHistory(`โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`, staffId, 1);
 
             // ข้อ 22: เมื่อผู้ใช้กดรับแต้ม ปรับสถานะเป็น Seller Accepted พร้อมบันทึก seller_decision = 'accepted'
             // พนักงานจะเป็นผู้กด Confirm Queue หลังจากนี้
@@ -758,9 +789,7 @@ export function dbApiPlugin() {
             const updatedUser = db.prepare("SELECT * FROM user WHERE user_id = ?").get(targetUser.user_id);
 
             // Log action
-            db.prepare(
-              "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-            ).run(1, 1, `แอดมินปรับคะแนนผู้ใช้ "${updatedUser.username}" จาก ${targetUser.points} เป็น ${newPoints} แต้ม`);
+            safeLogHistory(`แอดมินปรับคะแนนผู้ใช้ "${updatedUser.username}" จาก ${targetUser.points} เป็น ${newPoints} แต้ม`);
 
             return sendJson({ 
               success: true, 
@@ -782,9 +811,7 @@ export function dbApiPlugin() {
               db.prepare("DELETE FROM waste_history WHERE user_id = ?").run(userId);
               db.prepare("DELETE FROM garbage_reports WHERE user_id = ?").run(userId);
               db.prepare("DELETE FROM user WHERE user_id = ?").run(userId);
-              db.prepare(
-                "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-              ).run(1, 1, `แอดมินลบผู้ใช้ "${targetUser.username}" (ID: ${userId}) ออกจากระบบ`);
+              safeLogHistory(`แอดมินลบผู้ใช้ "${targetUser.username}" (ID: ${userId}) ออกจากระบบ`);
             })();
 
             return sendJson({ success: true, message: `ลบผู้ใช้งาน "${targetUser.username}" ออกจากระบบสำเร็จ!` });
@@ -806,15 +833,11 @@ export function dbApiPlugin() {
             return sendJson({ success: true, message: `ลบพนักงาน "${targetStaff.staff_name}" (ID: ${staffId}) ออกจากระบบสำเร็จ!` });
           }
 
-          // 15. ADMIN: CLEAR ALL QUEUES (ข้อ 25: ล้างคิวทั้งหมดของพนักงานทิ้งได้เลย)
+          // 15. ADMIN: CLEAR ALL QUEUES (ข้อ 25 & ข้อ 26: ล้างคิวทั้งหมดของพนักงานทิ้งได้เลย)
           if (pathname === '/api/admin/queues/clear' && method === 'POST') {
             db.transaction(() => {
               db.prepare("DELETE FROM garbage_reports").run();
-              try {
-                db.prepare(
-                  "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-                ).run(1, 1, 'แอดมินล้างคิวงานทั้งหมดของพนักงาน');
-              } catch (e) {}
+              safeLogHistory('แอดมินล้างคิวงานทั้งหมดของพนักงาน');
             })();
             return sendJson({ success: true, message: 'ล้างคิวงานทั้งหมดของพนักงานเรียบร้อยแล้ว' });
           }

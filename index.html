@@ -855,15 +855,14 @@
           <label id="login-name-label" style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">
             ชื่อคนขายขยะ (Username / Name):
           </label>
-          <input type="text" id="login-input-name" class="login-input-field" placeholder="เช่น testuser หรือ สมชาย" required />
+          <input type="text" id="login-input-name" class="login-input-field" placeholder="กรอกชื่อผู้ใช้งาน" required />
 
-          <!-- Password input (for Admin only - ข้อ 16: ล็อค admin ต้องชื่อ admin และรหัส admin01) -->
+          <!-- Password input (for Admin only) -->
           <div id="login-password-group" style="display:none; margin-top:12px;">
             <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
               รหัสผ่านผู้ดูแลระบบ (Admin Password):
             </label>
-            <input type="password" id="login-input-password" class="login-input-field" placeholder="กรอกรหัสผ่าน admin01" autocomplete="current-password" />
-            <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">🔒 จำกัดสิทธิ์: ต้องระบุชื่อ "admin" และรหัสผ่าน "admin01" เท่านั้น</p>
+            <input type="password" id="login-input-password" class="login-input-field" placeholder="กรอกรหัสผ่านผู้ดูแลระบบ" autocomplete="current-password" />
           </div>
 
           <button type="submit" class="btn-figma-primary margin-top-lg">
