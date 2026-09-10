@@ -921,6 +921,12 @@ app.post('/api/admin/staff/delete', async (req, res) => {
       { sql: 'DELETE FROM staffs WHERE staff_id = ?', args: [staffId] }
     ]);
 
+    res.json({ success: true, message: `ลบพนักงาน "${targetStaff.staff_name}" (ID: ${staffId}) ออกจากระบบสำเร็จ!` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 15. ADMIN: CLEAR ALL QUEUES (ล้างคิวทั้งหมดของพนักงานทิ้ง - ข้อ 25)
 app.post('/api/admin/queues/clear', async (req, res) => {
   try {
