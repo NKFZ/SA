@@ -664,6 +664,33 @@
               </table>
             </div>
           </div>
+
+          <!-- Staff Directory Table with Delete Option (ข้อ 17: ให้ admin ลบ staff ได้) -->
+          <div style="margin-top:24px; padding-top:16px; border-top:1px dashed rgba(0, 31, 63, 0.15);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">
+                <i data-lucide="truck" style="width:16px; height:16px; vertical-align:middle;"></i> รายชื่อพนักงานทั้งหมดในฐานข้อมูล (Staffs)
+              </span>
+              <button type="button" class="btn-refresh-sm" onclick="loadAdminStaffsList()">
+                <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> รีเฟรช
+              </button>
+            </div>
+            <div class="admin-users-table-container">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>ชื่อพนักงาน</th>
+                    <th>เบอร์โทรศัพท์</th>
+                    <th style="text-align:center;">การจัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-staffs-tbody">
+                  <tr><td colspan="4" style="text-align:center; padding:16px;">กำลังโหลดรายชื่อพนักงาน...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -753,6 +780,15 @@
             ชื่อคนขายขยะ (Username / Name):
           </label>
           <input type="text" id="login-input-name" class="login-input-field" placeholder="เช่น testuser หรือ สมชาย" required />
+
+          <!-- Password input (for Admin only - ข้อ 16: ล็อค admin ต้องชื่อ admin และรหัส admin01) -->
+          <div id="login-password-group" style="display:none; margin-top:12px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              รหัสผ่านผู้ดูแลระบบ (Admin Password):
+            </label>
+            <input type="password" id="login-input-password" class="login-input-field" placeholder="กรอกรหัสผ่าน admin01" autocomplete="current-password" />
+            <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">🔒 จำกัดสิทธิ์: ต้องระบุชื่อ "admin" และรหัสผ่าน "admin01" เท่านั้น</p>
+          </div>
 
           <button type="submit" class="btn-figma-primary margin-top-lg">
             <i data-lucide="log-in"></i> เข้าใช้งานทันที

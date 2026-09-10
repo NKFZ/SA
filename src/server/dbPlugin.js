@@ -193,32 +193,25 @@ export function dbApiPlugin() {
             return sendJson({ staff });
           }
 
-          // 2.1 LOGIN / ADMIN - 1 บทบาทต่อ 1 ชื่อ
+          // 2.1 LOGIN / ADMIN (ล็อคadmin ต้องชื่อ admin เเละใส่รหัส admin01 เท่านั้น)
           if (pathname === '/api/login/admin' && method === 'POST') {
-            const { name } = await parseBody();
+            const { name, password } = await parseBody();
             const trimmed = (name || '').trim();
+            const trimmedPass = (password || '').trim();
+
             if (!trimmed) {
               return sendJson({ error: 'กรุณากรอกชื่อผู้ดูแลระบบ' }, 400);
             }
 
-            // Check if name is already seller or staff
-            const existingUser = db.prepare("SELECT * FROM user WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?)").get(trimmed, trimmed);
-            if (existingUser) {
+            if (trimmed.toLowerCase() !== 'admin' || trimmedPass !== 'admin01') {
               return sendJson({ 
-                error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "คนขายขยะ (Seller)" แล้ว ไม่สามารถเข้าใช้งานเป็นแอดมินได้` 
-              }, 403);
+                error: 'สิทธิ์การเข้าถึงถูกปฏิเสธ: ต้องระบุชื่อเป็น "admin" และรหัสผ่าน "admin01" เท่านั้น' 
+              }, 401);
             }
 
-            const existingStaff = db.prepare("SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)").get(trimmed);
-            if (existingStaff) {
-              return sendJson({ 
-                error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "พนักงาน (Staff)" แล้ว ไม่สามารถเข้าใช้งานเป็นแอดมินได้` 
-              }, 403);
-            }
-
-            let admin = db.prepare("SELECT * FROM admins WHERE LOWER(admin_name) = LOWER(?)").get(trimmed);
+            let admin = db.prepare("SELECT * FROM admins WHERE LOWER(admin_name) = ?").get('admin');
             if (!admin) {
-              const resInsert = db.prepare("INSERT INTO admins (admin_name) VALUES (?)").run(trimmed);
+              const resInsert = db.prepare("INSERT INTO admins (admin_name) VALUES (?)").run('admin');
               admin = db.prepare("SELECT * FROM admins WHERE admin_id = ?").get(resInsert.lastInsertRowid);
             }
 
@@ -335,7 +328,7 @@ export function dbApiPlugin() {
             });
           }
 
-          // 4.3 ADMIN: DELETE REWARD
+          // 4.3 ADMIN: DELETE REWARD (แก้ foreign key constraint error)
           if (pathname === '/api/admin/rewards/delete' && method === 'POST') {
             const { rewardId } = await parseBody();
             if (!rewardId) return sendJson({ error: 'Missing rewardId' }, 400);
@@ -343,7 +336,11 @@ export function dbApiPlugin() {
             const target = db.prepare("SELECT * FROM rewards WHERE reward_id = ?").get(rewardId);
             if (!target) return sendJson({ error: 'Reward not found' }, 404);
 
-            db.prepare("DELETE FROM rewards WHERE reward_id = ?").run(rewardId);
+            db.transaction(() => {
+              db.prepare("DELETE FROM redemptions WHERE reward_id = ?").run(rewardId);
+              db.prepare("DELETE FROM rewards WHERE reward_id = ?").run(rewardId);
+            })();
+
             return sendJson({ success: true, message: `ลบของรางวัล "${target.reward_name}" เรียบร้อยแล้ว` });
           }
 
@@ -559,6 +556,43 @@ export function dbApiPlugin() {
               user: updatedUser, 
               message: `ปรับคะแนนผู้ใช้ "${updatedUser.username}" เป็น ${newPoints.toLocaleString()} แต้ม สำเร็จ!` 
             });
+          }
+
+          // 13. ADMIN: DELETE USER
+          if (pathname === '/api/admin/user/delete' && method === 'POST') {
+            const { userId } = await parseBody();
+            if (!userId) return sendJson({ error: 'Missing userId' }, 400);
+
+            const targetUser = db.prepare("SELECT * FROM user WHERE user_id = ?").get(userId);
+            if (!targetUser) return sendJson({ error: 'ไม่พบผู้ใช้งานนี้ในระบบ' }, 404);
+
+            db.transaction(() => {
+              db.prepare("DELETE FROM redemptions WHERE user_id = ?").run(userId);
+              db.prepare("DELETE FROM waste_history WHERE user_id = ?").run(userId);
+              db.prepare("DELETE FROM garbage_reports WHERE user_id = ?").run(userId);
+              db.prepare("DELETE FROM user WHERE user_id = ?").run(userId);
+              db.prepare(
+                "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
+              ).run(1, 1, `แอดมินลบผู้ใช้ "${targetUser.username}" (ID: ${userId}) ออกจากระบบ`);
+            })();
+
+            return sendJson({ success: true, message: `ลบผู้ใช้งาน "${targetUser.username}" ออกจากระบบสำเร็จ!` });
+          }
+
+          // 14. ADMIN: DELETE STAFF
+          if (pathname === '/api/admin/staff/delete' && method === 'POST') {
+            const { staffId } = await parseBody();
+            if (!staffId) return sendJson({ error: 'Missing staffId' }, 400);
+
+            const targetStaff = db.prepare("SELECT * FROM staffs WHERE staff_id = ?").get(staffId);
+            if (!targetStaff) return sendJson({ error: 'ไม่พบพนักงานนี้ในระบบ' }, 404);
+
+            db.transaction(() => {
+              db.prepare("DELETE FROM history_logs WHERE staff_id = ?").run(staffId);
+              db.prepare("DELETE FROM staffs WHERE staff_id = ?").run(staffId);
+            })();
+
+            return sendJson({ success: true, message: `ลบพนักงาน "${targetStaff.staff_name}" (ID: ${staffId}) ออกจากระบบสำเร็จ!` });
           }
 
           // If no matching API

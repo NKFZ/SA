@@ -88,18 +88,27 @@ function setupLoginModalEvents() {
     cardStaff?.classList.remove('selected');
     cardAdmin?.classList.remove('selected');
 
+    const passwordGroup = document.getElementById('login-password-group');
+    const inputPassword = document.getElementById('login-input-password');
+
     if (role === 'seller') {
       cardSeller?.classList.add('selected');
       if (nameLabel) nameLabel.textContent = 'ชื่อคนขายขยะ (Username / Name):';
       if (inputName) inputName.placeholder = 'เช่น testuser หรือ สมศรี';
+      if (passwordGroup) passwordGroup.style.display = 'none';
+      if (inputPassword) { inputPassword.required = false; inputPassword.value = ''; }
     } else if (role === 'staff') {
       cardStaff?.classList.add('selected');
       if (nameLabel) nameLabel.textContent = 'ชื่อพนักงานเก็บขยะ (Staff Name):';
       if (inputName) inputName.placeholder = 'เช่น สมชาย หรือ EMP-8821';
+      if (passwordGroup) passwordGroup.style.display = 'none';
+      if (inputPassword) { inputPassword.required = false; inputPassword.value = ''; }
     } else if (role === 'admin') {
       cardAdmin?.classList.add('selected');
-      if (nameLabel) nameLabel.textContent = 'ชื่อผู้ดูแลระบบ (Admin Name):';
-      if (inputName) inputName.placeholder = 'เช่น Admin หรือ ผู้จัดการ';
+      if (nameLabel) nameLabel.textContent = 'ชื่อผู้ดูแลระบบ (Admin Username):';
+      if (inputName) inputName.placeholder = 'admin';
+      if (passwordGroup) passwordGroup.style.display = 'block';
+      if (inputPassword) inputPassword.required = true;
     }
   };
 
@@ -144,6 +153,7 @@ function setupLoginModalEvents() {
           localStorage.setItem('ECO_USER_ID', currentUser.user_id);
           localStorage.removeItem('ECO_STAFF_ID');
           localStorage.removeItem('ECO_ADMIN_NAME');
+          localStorage.removeItem('ECO_ADMIN_AUTH');
           localStorage.setItem('ECO_CURRENT_ROLE', 'seller');
           switchRole('seller', false);
           closeLoginModal();
@@ -167,6 +177,7 @@ function setupLoginModalEvents() {
           localStorage.setItem('ECO_STAFF_ID', currentStaff.staff_id);
           localStorage.removeItem('ECO_USER_ID');
           localStorage.removeItem('ECO_ADMIN_NAME');
+          localStorage.removeItem('ECO_ADMIN_AUTH');
           localStorage.setItem('ECO_CURRENT_ROLE', 'employee');
           switchRole('employee', false);
           closeLoginModal();
@@ -174,10 +185,16 @@ function setupLoginModalEvents() {
           await refreshAllUI();
         }
       } else if (pendingLoginRole === 'admin') {
+        const inputPassword = document.getElementById('login-input-password')?.value.trim();
+        if (inputName.toLowerCase() !== 'admin' || inputPassword !== 'admin01') {
+          showToast('สิทธิ์ถูกปฏิเสธ: ต้องระบุชื่อ "admin" และรหัสผ่าน "admin01" เท่านั้น', 'error');
+          return;
+        }
+
         const res = await fetch('/api/login/admin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: inputName })
+          body: JSON.stringify({ name: inputName, password: inputPassword })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -187,13 +204,14 @@ function setupLoginModalEvents() {
 
         if (data.admin) {
           currentAdmin = data.admin;
+          localStorage.setItem('ECO_ADMIN_AUTH', 'true');
           localStorage.setItem('ECO_ADMIN_NAME', currentAdmin.admin_name);
           localStorage.removeItem('ECO_USER_ID');
           localStorage.removeItem('ECO_STAFF_ID');
           localStorage.setItem('ECO_CURRENT_ROLE', 'admin');
           switchRole('admin', false);
           closeLoginModal();
-          showToast(`เข้าสู่ระบบผู้ดูแล: ${currentAdmin.admin_name}`, 'success');
+          showToast(`เข้าสู่ระบบผู้ดูแลระบบ: ${currentAdmin.admin_name}`, 'success');
           await refreshAllUI();
         }
       }
@@ -247,7 +265,16 @@ function setupRoleSwitcher() {
     btnEmployee.addEventListener('click', () => switchRole('employee'));
   }
   if (btnAdmin) {
-    btnAdmin.addEventListener('click', () => switchRole('admin'));
+    btnAdmin.addEventListener('click', () => {
+      const isAuth = localStorage.getItem('ECO_ADMIN_AUTH') === 'true';
+      if (!isAuth || !currentAdmin || currentAdmin.admin_name.toLowerCase() !== 'admin') {
+        showToast('กรุณาระบุชื่อและรหัสผ่านเพื่อเข้าสู่ระบบผู้ดูแลระบบ (Admin)', 'info');
+        selectLoginRole('admin');
+        openLoginModal();
+        return;
+      }
+      switchRole('admin');
+    });
   }
 
   window.switchRole = switchRole;
@@ -848,10 +875,7 @@ export async function refreshAllUI() {
     if (sellerUsername) sellerUsername.textContent = currentUser.username;
     if (sellerPhone) sellerPhone.textContent = currentUser.phone || '089-765-4321';
 
-    const initials = (currentUser.name || currentUser.username || 'U').substring(0, 2).toUpperCase();
-    if (avatarInitials) avatarInitials.textContent = initials;
-    const profileAvatar = document.getElementById('profile-avatar-circle');
-    if (profileAvatar) profileAvatar.textContent = initials;
+    renderUserAvatar();
 
     if (profileName) profileName.textContent = currentUser.name || currentUser.username;
     if (profileId) profileId.textContent = currentUser.user_id;
@@ -881,14 +905,17 @@ export async function refreshAllUI() {
   window.setCurrentUser = (u) => { currentUser = u; };
 }
 
-// ข้อ 2: จัดการการเลือกรูปภาพโปรไฟล์ (เฉพาะฝั่งคนขาย) และบันทึกลง SQLite DB
+// ข้อ 2 & ข้อ 13: จัดการการเลือกรูปภาพโปรไฟล์ และย่อขนาดด้วย Canvas ก่อนบันทึกลง DB
 window.triggerProfileImageUpload = () => {
   if (currentRole !== 'seller') {
     showToast('ฟังก์ชันนี้สำหรับคนขายขยะเท่านั้น', 'warning');
     return;
   }
   const fileInput = document.getElementById('profile-image-file-input');
-  if (fileInput) fileInput.click();
+  if (fileInput) {
+    fileInput.value = '';
+    fileInput.click();
+  }
 };
 
 window.handleProfileImageSelected = async (e) => {
@@ -900,40 +927,73 @@ window.handleProfileImageSelected = async (e) => {
     return;
   }
 
-  // Check file size (limit to 2MB)
-  if (file.size > 2 * 1024 * 1024) {
-    showToast('ขนาดรูปภาพต้องไม่เกิน 2MB', 'warning');
-    return;
-  }
+  showToast('กำลังประมวลผลรูปภาพโปรไฟล์...', 'info');
 
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const base64Image = reader.result;
-    try {
-      const res = await fetch('/api/user/profile-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.user_id,
-          imageBase64: base64Image
-        })
-      });
+  try {
+    // Resize image to max 400x400 with 0.85 quality using Canvas to prevent large payloads
+    const base64Image = await resizeImageToMax(file, 400, 400);
 
-      const data = await res.json();
-      if (data.success) {
-        currentUser = data.user;
-        renderUserAvatar();
-        showToast('อัปเดตรูปโปรไฟล์สำเร็จเรียบร้อย!', 'success');
-      } else {
-        showToast(data.error || 'ไม่สามารถบันทึกรูปได้', 'error');
-      }
-    } catch (err) {
-      console.error('Error uploading avatar:', err);
-      showToast('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ', 'error');
+    const res = await fetch('/api/user/profile-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUser.user_id,
+        imageBase64: base64Image
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      currentUser = data.user;
+      renderUserAvatar();
+      showToast('อัปเดตรูปโปรไฟล์สำเร็จเรียบร้อย!', 'success');
+      await refreshAllUI();
+    } else {
+      showToast(data.error || 'ไม่สามารถบันทึกรูปได้', 'error');
     }
-  };
-  reader.readAsDataURL(file);
+  } catch (err) {
+    console.error('Error uploading avatar:', err);
+    showToast('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ', 'error');
+  } finally {
+    e.target.value = '';
+  }
 };
+
+function resizeImageToMax(file, maxWidth, maxHeight) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function renderUserAvatar() {
   const avatarHome = document.getElementById('seller-avatar-initials');
@@ -1062,6 +1122,7 @@ async function loadAdminDashboardData() {
   await loadAdminRewards();
   await loadAdminRatesForm();
   await loadAdminUsersList();
+  await loadAdminStaffsList();
 }
 
 window.loadAdminDashboardData = loadAdminDashboardData;
@@ -1358,9 +1419,14 @@ async function loadAdminUsersList() {
           ${(u.points || 0).toLocaleString()} แต้ม
         </td>
         <td style="text-align:center;">
-          <button type="button" class="btn-select-user-tag" onclick="selectUserForPointsEdit('${u.username}', ${u.points})">
-            เลือกปรับแต้ม
-          </button>
+          <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
+            <button type="button" class="btn-select-user-tag" onclick="selectUserForPointsEdit('${u.username}', ${u.points})">
+              ปรับแต้ม
+            </button>
+            <button type="button" class="btn-admin-del-sm" onclick="adminDeleteUser(${u.user_id}, '${u.username}')" title="ลบผู้ใช้นี้ออกจากระบบ">
+              <i data-lucide="trash-2" style="width:13px; height:13px;"></i> ลบ
+            </button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -1372,6 +1438,36 @@ async function loadAdminUsersList() {
 }
 
 window.loadAdminUsersList = loadAdminUsersList;
+
+window.adminDeleteUser = async (userId, username) => {
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งาน "${username}" (ID: #${userId}) ออกจากระบบ?\n\nคำเตือน: ประวัติการแลกของรางวัลและสถิติขยะทั้งหมดของผู้ใช้นี้จะถูกลบอย่างถาวร!`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/user/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || `ลบผู้ใช้งาน "${username}" สำเร็จ`, 'success');
+      if (currentUser && currentUser.user_id == userId) {
+        currentUser = null;
+        localStorage.removeItem('ECO_USER_ID');
+      }
+      await loadAdminUsersList();
+      await refreshAllUI();
+    } else {
+      showToast(data.error || 'ไม่สามารถลบผู้ใช้งานได้', 'error');
+    }
+  } catch (err) {
+    console.error('Error deleting user:', err);
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  }
+};
 
 window.selectUserForPointsEdit = (username, currentPts) => {
   const inputUser = document.getElementById('admin-input-target-user');
@@ -1417,6 +1513,74 @@ window.handleAdminAdjustPoints = async (e) => {
     }
   } catch (err) {
     console.error('Error adjusting user points:', err);
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  }
+};
+
+// ข้อ 17: ฟังก์ชันจัดการและลบพนักงาน (Staffs) สำหรับ Admin
+async function loadAdminStaffsList() {
+  const tbody = document.getElementById('admin-staffs-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch('/api/staffs');
+    const data = await res.json();
+    const staffs = data.staffs || [];
+
+    if (staffs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:16px;">ยังไม่มีพนักงานในระบบ</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = staffs.map(s => `
+      <tr>
+        <td style="font-weight:700;">#${s.staff_id}</td>
+        <td>
+          <div style="font-weight:700; color:var(--navy-dark);">${s.staff_name}</div>
+        </td>
+        <td style="font-size:0.8rem; color:var(--text-muted);">${s.phone || '-'}</td>
+        <td style="text-align:center;">
+          <button type="button" class="btn-admin-del-sm" onclick="adminDeleteStaff(${s.staff_id}, '${s.staff_name}')" title="ลบพนักงานนี้ออกจากระบบ">
+            <i data-lucide="trash-2" style="width:13px; height:13px;"></i> ลบพนักงาน
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    createIcons({ icons });
+  } catch (err) {
+    console.error('Error loading admin staffs:', err);
+  }
+}
+
+window.loadAdminStaffsList = loadAdminStaffsList;
+
+window.adminDeleteStaff = async (staffId, staffName) => {
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบพนักงาน "${staffName}" (ID: #${staffId}) ออกจากระบบ?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/staff/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || `ลบพนักงาน "${staffName}" สำเร็จ`, 'success');
+      if (currentStaff && currentStaff.staff_id == staffId) {
+        currentStaff = null;
+        localStorage.removeItem('ECO_STAFF_ID');
+      }
+      await loadAdminStaffsList();
+      await refreshAllUI();
+    } else {
+      showToast(data.error || 'ไม่สามารถลบพนักงานได้', 'error');
+    }
+  } catch (err) {
+    console.error('Error deleting staff:', err);
     showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
   }
 };

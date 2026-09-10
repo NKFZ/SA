@@ -170,32 +170,26 @@ app.post('/api/login/staff', async (req, res) => {
   }
 });
 
-// 2.1 LOGIN / ADMIN
+// 2.1 LOGIN / ADMIN (ล็อคadmin ต้องชื่อ admin เเละใส่รหัส admin01 เท่านั้น)
 app.post('/api/login/admin', async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, password } = req.body;
     const trimmed = (name || '').trim();
+    const trimmedPass = (password || '').trim();
+
     if (!trimmed) {
       return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ดูแลระบบ' });
     }
 
-    const existingUser = await queryOne('SELECT * FROM user WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?)', [trimmed, trimmed]);
-    if (existingUser) {
-      return res.status(403).json({ 
-        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "คนขายขยะ (Seller)" แล้ว ไม่สามารถเข้าใช้งานเป็นแอดมินได้` 
+    if (trimmed.toLowerCase() !== 'admin' || trimmedPass !== 'admin01') {
+      return res.status(401).json({ 
+        error: 'สิทธิ์การเข้าถึงถูกปฏิเสธ: ต้องระบุชื่อเป็น "admin" และรหัสผ่าน "admin01" เท่านั้น' 
       });
     }
 
-    const existingStaff = await queryOne('SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)', [trimmed]);
-    if (existingStaff) {
-      return res.status(403).json({ 
-        error: `ชื่อ "${trimmed}" ได้รับการลงทะเบียนเป็น "พนักงาน (Staff)" แล้ว ไม่สามารถเข้าใช้งานเป็นแอดมินได้` 
-      });
-    }
-
-    let admin = await queryOne('SELECT * FROM admins WHERE LOWER(admin_name) = LOWER(?)', [trimmed]);
+    let admin = await queryOne('SELECT * FROM admins WHERE LOWER(admin_name) = ?', ['admin']);
     if (!admin) {
-      const insertRes = await execute('INSERT INTO admins (admin_name) VALUES (?)', [trimmed]);
+      const insertRes = await execute('INSERT INTO admins (admin_name) VALUES (?)', ['admin']);
       admin = await queryOne('SELECT * FROM admins WHERE admin_id = ?', [Number(insertRes.lastInsertRowid)]);
     }
 
@@ -341,7 +335,7 @@ app.post('/api/admin/rewards/add', async (req, res) => {
   }
 });
 
-// 4.3 ADMIN: DELETE REWARD
+// 4.3 ADMIN: DELETE REWARD (แก้ foreign key constraint error)
 app.post('/api/admin/rewards/delete', async (req, res) => {
   try {
     const { rewardId } = req.body;
@@ -350,7 +344,12 @@ app.post('/api/admin/rewards/delete', async (req, res) => {
     const target = await queryOne('SELECT * FROM rewards WHERE reward_id = ?', [rewardId]);
     if (!target) return res.status(404).json({ error: 'Reward not found' });
 
-    await execute('DELETE FROM rewards WHERE reward_id = ?', [rewardId]);
+    // Delete redemptions associated with this reward first to prevent Foreign Key constraint error
+    await db.batch([
+      { sql: 'DELETE FROM redemptions WHERE reward_id = ?', args: [rewardId] },
+      { sql: 'DELETE FROM rewards WHERE reward_id = ?', args: [rewardId] }
+    ]);
+
     res.json({ success: true, message: `ลบของรางวัล "${target.reward_name}" เรียบร้อยแล้ว` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -602,6 +601,52 @@ app.post('/api/admin/user/adjust-points', async (req, res) => {
       user: updatedUser, 
       message: `ปรับคะแนนผู้ใช้ "${updatedUser.username}" เป็น ${newPoints.toLocaleString()} แต้ม สำเร็จ!` 
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 13. ADMIN: DELETE USER (ลบ user พร้อมข้อมูลที่เชื่อมโยง)
+app.post('/api/admin/user/delete', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+    const targetUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
+    if (!targetUser) return res.status(404).json({ error: 'ไม่พบผู้ใช้งานนี้ในระบบ' });
+
+    await db.batch([
+      { sql: 'DELETE FROM redemptions WHERE user_id = ?', args: [userId] },
+      { sql: 'DELETE FROM waste_history WHERE user_id = ?', args: [userId] },
+      { sql: 'DELETE FROM garbage_reports WHERE user_id = ?', args: [userId] },
+      { sql: 'DELETE FROM user WHERE user_id = ?', args: [userId] },
+      {
+        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+        args: [1, 1, `แอดมินลบผู้ใช้ "${targetUser.username}" (ID: ${userId}) ออกจากระบบ`]
+      }
+    ]);
+
+    res.json({ success: true, message: `ลบผู้ใช้งาน "${targetUser.username}" ออกจากระบบสำเร็จ!` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 14. ADMIN: DELETE STAFF (ลบ staff พร้อมข้อมูลที่เชื่อมโยง)
+app.post('/api/admin/staff/delete', async (req, res) => {
+  try {
+    const { staffId } = req.body;
+    if (!staffId) return res.status(400).json({ error: 'Missing staffId' });
+
+    const targetStaff = await queryOne('SELECT * FROM staffs WHERE staff_id = ?', [staffId]);
+    if (!targetStaff) return res.status(404).json({ error: 'ไม่พบพนักงานนี้ในระบบ' });
+
+    await db.batch([
+      { sql: 'DELETE FROM history_logs WHERE staff_id = ?', args: [staffId] },
+      { sql: 'DELETE FROM staffs WHERE staff_id = ?', args: [staffId] }
+    ]);
+
+    res.json({ success: true, message: `ลบพนักงาน "${targetStaff.staff_name}" (ID: ${staffId}) ออกจากระบบสำเร็จ!` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

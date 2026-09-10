@@ -822,11 +822,29 @@ h1, h2, h3, h4 {
   color: #fff;
 }
 
+.user-avatar-circle {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--navy-dark);
+  color: var(--lime-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 800;
+  border: 3px solid var(--emerald-green);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+}
+
 .user-avatar-circle img {
   width: 100%;
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
+  display: block;
 }
 
 .stats-category-grid {
