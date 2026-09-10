@@ -91,6 +91,7 @@ async function initDatabase() {
     try { await execute('ALTER TABLE user ADD COLUMN address TEXT'); } catch(e) {}
     try { await execute('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER'); } catch(e) {}
     try { await execute('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT'); } catch(e) {}
+    try { await execute('ALTER TABLE garbage_reports ADD COLUMN seller_decision TEXT'); } catch(e) {}
 
     console.log('[Server] Database initialized successfully.');
   } catch (err) {
@@ -170,7 +171,7 @@ app.post('/api/login/seller', async (req, res) => {
     if (!user) {
       const insertRes = await execute(
         'INSERT INTO user (username, name, email, phone, points) VALUES (?, ?, ?, ?, ?)',
-        [trimmed, trimmed, `${trimmed.toLowerCase()}@eco.com`, '089-765-4321', 670]
+        [trimmed, trimmed, `${trimmed.toLowerCase()}@eco.com`, '', 670]
       );
       user = await queryOne('SELECT * FROM user WHERE user_id = ?', [Number(insertRes.lastInsertRowid)]);
     }
@@ -206,11 +207,31 @@ app.post('/api/login/staff', async (req, res) => {
 
     let staff = await queryOne('SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)', [trimmed]);
     if (!staff) {
-      const insertRes = await execute('INSERT INTO staffs (staff_name, phone) VALUES (?, ?)', [trimmed, '081-999-8888']);
+      const insertRes = await execute('INSERT INTO staffs (staff_name, phone) VALUES (?, ?)', [trimmed, '0123456789']);
       staff = await queryOne('SELECT * FROM staffs WHERE staff_id = ?', [Number(insertRes.lastInsertRowid)]);
+    } else if (!staff.phone) {
+      // Ensure initial default phone is 0123456789 (ข้อ 24)
+      await execute("UPDATE staffs SET phone = '0123456789' WHERE staff_id = ?", [staff.staff_id]);
+      staff.phone = '0123456789';
     }
 
     res.json({ staff });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2.05 UPDATE STAFF PHONE (ข้อ 24)
+app.post('/api/staff/phone', async (req, res) => {
+  try {
+    const { staffId, phone } = req.body;
+    if (!staffId) {
+      return res.status(400).json({ error: 'Missing staffId' });
+    }
+    const phoneVal = (phone || '').trim() || '0123456789';
+    await execute('UPDATE staffs SET phone = ? WHERE staff_id = ?', [phoneVal, staffId]);
+    const staff = await queryOne('SELECT * FROM staffs WHERE staff_id = ?', [staffId]);
+    res.json({ success: true, staff });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -521,7 +542,7 @@ app.get('/api/pickup/user/:userId', async (req, res) => {
       LEFT JOIN user u ON g.user_id = u.user_id
       LEFT JOIN locations l ON g.location_id = l.location_id
       LEFT JOIN staffs s ON g.staff_id = s.staff_id
-      WHERE g.user_id = ? AND g.status = 'Waiting'
+      WHERE g.user_id = ? AND g.status IN ('Waiting', 'Seller Accepted', 'Seller Rejected')
       ORDER BY g.report_id DESC
       LIMIT 1
     `, [userId]);
@@ -532,12 +553,79 @@ app.get('/api/pickup/user/:userId', async (req, res) => {
   }
 });
 
-// ยืนยันคิวเสร็จสิ้น (Confirm Queue - ข้อ 20)
+// ตรวจสอบสถานะการตัดสินใจของ Seller สำหรับคิวที่พนักงานกำลังทำรายการ (ข้อ 22)
+app.get('/api/pickup/status/:reportId', async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const report = await queryOne(`
+      SELECT g.*, 
+             u.name as user_name, u.phone as user_phone, 
+             l.location_name,
+             s.staff_name, s.phone as staff_phone
+      FROM garbage_reports g
+      LEFT JOIN user u ON g.user_id = u.user_id
+      LEFT JOIN locations l ON g.location_id = l.location_id
+      LEFT JOIN staffs s ON g.staff_id = s.staff_id
+      WHERE g.report_id = ?
+    `, [reportId]);
+
+    if (!report) {
+      return res.status(404).json({ error: 'ไม่พบรายการคิวนี้ในระบบ' });
+    }
+    res.json({ report });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ลูกค้ากดปฏิเสธแต้มจากการสแกน QR Code (ข้อ 22)
+app.post('/api/pickup/reject', async (req, res) => {
+  try {
+    const { reportId, userId, reason } = req.body;
+    if (!reportId) {
+      return res.status(400).json({ error: 'Missing reportId' });
+    }
+
+    await execute(
+      "UPDATE garbage_reports SET status = 'Seller Rejected', seller_decision = 'rejected' WHERE report_id = ?",
+      [reportId]
+    );
+
+    const report = await queryOne('SELECT * FROM garbage_reports WHERE report_id = ?', [reportId]);
+    if (report && report.staff_id) {
+      try {
+        await execute(
+          "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+          [report.staff_id, report.location_id || 1, `ลูกค้า #${userId || report.user_id} ปฏิเสธแต้มในคิว #${reportId} (${reason || 'ปฏิเสธแต้ม'})`]
+        );
+      } catch (e) {}
+    }
+
+    res.json({ success: true, message: 'บันทึกการปฏิเสธแต้มเรียบร้อยแล้ว' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ยืนยันคิวเสร็จสิ้น (Confirm Queue - ข้อ 20 & ข้อ 22)
+// พนักงานจะกด Confirm ได้ก็ต่อเมื่อ seller สแกน qr code และกดยืนยันรับหรือปฏิเสธ point แล้วเท่านั้น
 app.post('/api/pickup/confirm', async (req, res) => {
   try {
     const { reportId, staffId } = req.body;
     if (!reportId) {
       return res.status(400).json({ error: 'Missing reportId' });
+    }
+
+    const currentRep = await queryOne('SELECT * FROM garbage_reports WHERE report_id = ?', [reportId]);
+    if (!currentRep) {
+      return res.status(404).json({ error: 'ไม่พบรายการคิวนี้ในระบบ' });
+    }
+
+    // ข้อ 22: ตรวจสอบการตัดสินใจของ seller
+    if (!currentRep.seller_decision) {
+      return res.status(400).json({ 
+        error: 'ยังไม่สามารถยืนยันคิวได้: ต้องรอให้ลูกค้าสแกน QR Code และกดยืนยันรับหรือปฏิเสธแต้มก่อน' 
+      });
     }
 
     await execute("UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?", [reportId]);
@@ -557,7 +645,7 @@ app.post('/api/pickup/confirm', async (req, res) => {
       try {
         await execute(
           "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))",
-          [staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''}`]
+          [staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''} (ผลการตัดสินใจลูกค้า: ${currentRep.seller_decision})`]
         );
       } catch (e) {}
     }
@@ -665,15 +753,15 @@ app.post('/api/points/add', async (req, res) => {
       }
     ];
 
-    // ปรับสถานะคิวเป็น Completed เมื่อรับแต้มเสร็จสิ้น
+    // ปรับสถานะคิวเป็น Seller Accepted เมื่อรับแต้มเสร็จสิ้น (ข้อ 22)
     if (reportId) {
       batchOps.push({
-        sql: "UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?",
+        sql: "UPDATE garbage_reports SET status = 'Seller Accepted', seller_decision = 'accepted' WHERE report_id = ?",
         args: [reportId]
       });
     } else {
       batchOps.push({
-        sql: "UPDATE garbage_reports SET status = 'Completed' WHERE user_id = ? AND status = 'Waiting'",
+        sql: "UPDATE garbage_reports SET status = 'Seller Accepted', seller_decision = 'accepted' WHERE user_id = ? AND status = 'Waiting'",
         args: [userId]
       });
     }
@@ -833,7 +921,21 @@ app.post('/api/admin/staff/delete', async (req, res) => {
       { sql: 'DELETE FROM staffs WHERE staff_id = ?', args: [staffId] }
     ]);
 
-    res.json({ success: true, message: `ลบพนักงาน "${targetStaff.staff_name}" (ID: ${staffId}) ออกจากระบบสำเร็จ!` });
+// 15. ADMIN: CLEAR ALL QUEUES (ล้างคิวทั้งหมดของพนักงานทิ้ง - ข้อ 25)
+app.post('/api/admin/queues/clear', async (req, res) => {
+  try {
+    const queueCountRes = await queryOne('SELECT COUNT(*) as count FROM garbage_reports');
+    const totalDeleted = queueCountRes ? queueCountRes.count : 0;
+
+    await db.batch([
+      { sql: 'DELETE FROM garbage_reports', args: [] },
+      { 
+        sql: "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))", 
+        args: [1, 1, `แอดมินล้างคิวคำขอรับซื้อขยะของพนักงานทั้งหมด (${totalDeleted} รายการ)`] 
+      }
+    ]);
+
+    res.json({ success: true, message: `ล้างคิวของพนักงานทั้งหมดสำเร็จแล้ว (${totalDeleted} รายการ)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

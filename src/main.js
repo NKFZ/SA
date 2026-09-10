@@ -397,14 +397,91 @@ function switchView(viewId) {
    Employee Logic (Form, Evaluation, QR Code)
    ========================================================================== */
 function setupEmployeeFormEvents() {
+  let servingReportPollInterval = null;
+
+  function stopServingReportPolling() {
+    if (servingReportPollInterval) {
+      clearInterval(servingReportPollInterval);
+      servingReportPollInterval = null;
+    }
+  }
+
+  async function checkServingReportStatus() {
+    if (!window.currentServingReportId) {
+      stopServingReportPolling();
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/pickup/status/${window.currentServingReportId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const rep = data.report;
+      if (!rep) return;
+
+      const decisionText = document.getElementById('emp-customer-decision-status');
+      const confirmBtn = document.getElementById('btn-emp-direct-confirm');
+
+      if (rep.seller_decision === 'accepted' || rep.status === 'Seller Accepted') {
+        if (decisionText) {
+          decisionText.innerHTML = '<span style="color:var(--emerald-green);">✅ ลูกค้าสแกนและ "ยืนยันรับแต้มแล้ว" เรียบร้อยแล้ว!</span>';
+        }
+        if (confirmBtn) {
+          confirmBtn.disabled = false;
+          confirmBtn.style.opacity = '1';
+          confirmBtn.style.cursor = 'pointer';
+        }
+      } else if (rep.seller_decision === 'rejected' || rep.status === 'Seller Rejected') {
+        if (decisionText) {
+          decisionText.innerHTML = '<span style="color:#ef4444;">❌ ลูกค้าสแกนและ "ปฏิเสธแต้ม" (Reject)</span>';
+        }
+        if (confirmBtn) {
+          confirmBtn.disabled = false;
+          confirmBtn.style.opacity = '1';
+          confirmBtn.style.cursor = 'pointer';
+        }
+      } else {
+        if (decisionText) {
+          decisionText.innerHTML = '<span style="color:var(--amber-orange);">⏳ รอลูกค้าสแกน QR Code และกดยืนยันรับหรือปฏิเสธแต้ม...</span>';
+        }
+        if (confirmBtn) {
+          confirmBtn.disabled = true;
+          confirmBtn.style.opacity = '0.6';
+          confirmBtn.style.cursor = 'not-allowed';
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking serving report status:', e);
+    }
+  }
+
   window.employeeGoToLocation = (reportId, name, userId) => {
     const label = document.getElementById('form-customer-name-display');
     if (label) label.textContent = `${name} (User #${userId || 1}) - คิวคำขอ #${reportId}`;
     window.currentServingUserId = userId || 1;
     window.currentServingUserName = name || 'ลูกค้า';
     window.currentServingReportId = reportId || null;
+
+    // รีเซ็ตสถานะปุ่มยืนยันให้ disabled ไว้ก่อน (ข้อ 22)
+    const confirmBtn = document.getElementById('btn-emp-direct-confirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.style.opacity = '0.6';
+      confirmBtn.style.cursor = 'not-allowed';
+    }
+    const decisionText = document.getElementById('emp-customer-decision-status');
+    if (decisionText) {
+      decisionText.innerHTML = '<span style="color:var(--amber-orange);">⏳ รอลูกค้าสแกน QR Code และกดยืนยันรับหรือปฏิเสธแต้ม...</span>';
+    }
+
     switchView('view-employee-form');
     calcEmpTotals();
+
+    // เริ่ม Polling เช็คผลการสแกนของลูกค้า (ทุก 2 วินาที)
+    stopServingReportPolling();
+    servingReportPollInterval = setInterval(checkServingReportStatus, 2000);
+    checkServingReportStatus();
+
     showToast(`กำลังรับซื้อขยะให้ลูกค้า ${name} (คำขอ #${reportId})`, 'info');
   };
 
@@ -427,8 +504,9 @@ function setupEmployeeFormEvents() {
       if (res.ok && data.success) {
         showToast(`✅ ยืนยันคิว #${reportIdToConfirm} เสร็จสิ้นแล้ว ปลดล็อคคิวถัดไปเรียบร้อย`, 'success');
         window.currentServingReportId = null;
+        stopServingReportPolling();
         await loadPickupQueue();
-        switchView('view-employee-queue');
+        switchView('view-employee-home');
       } else {
         showToast(data.error || 'ไม่สามารถยืนยันคิวได้', 'error');
       }
@@ -1153,7 +1231,7 @@ export async function refreshAllUI() {
     if (sellerName) sellerName.textContent = currentUser.name || currentUser.username;
     if (sellerId) sellerId.textContent = currentUser.user_id;
     if (sellerUsername) sellerUsername.textContent = currentUser.username;
-    if (sellerPhone) sellerPhone.textContent = currentUser.phone || '089-765-4321';
+    if (sellerPhone) sellerPhone.textContent = currentUser.phone ? currentUser.phone : 'ยังไม่ได้ระบุเบอร์โทร';
 
     renderUserAvatar();
 
@@ -1163,10 +1241,14 @@ export async function refreshAllUI() {
     if (profilePoints) profilePoints.textContent = `🏅 แต้มสะสม: ${(currentUser.points || 0).toLocaleString()} แต้ม`;
   }
 
-  // Sync staff banner (NO POINTS FOR STAFF)
+  // Sync staff banner (NO POINTS FOR STAFF) & Staff Phone (ข้อ 24)
   if (currentStaff) {
     const staffBanner = document.getElementById('staff-name-banner');
     if (staffBanner) staffBanner.textContent = `${currentStaff.staff_name} (ID: ${currentStaff.staff_id})`;
+    const staffPhoneInput = document.getElementById('staff-phone-input');
+    if (staffPhoneInput && currentStaff.phone) {
+      staffPhoneInput.value = currentStaff.phone;
+    }
   }
 
   await loadWasteRates();
@@ -1862,6 +1944,69 @@ window.adminDeleteStaff = async (staffId, staffName) => {
     }
   } catch (err) {
     console.error('Error deleting staff:', err);
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  }
+};
+
+// ข้อ 24: Staff สามารถกรอกเบอร์ของตัวเองและบันทึกเบอร์ได้
+window.saveStaffPhone = async () => {
+  if (!currentStaff || !currentStaff.staff_id) {
+    showToast('กรุณาเข้าสู่ระบบในบทบาทพนักงานก่อนบันทึกเบอร์โทร', 'warning');
+    return;
+  }
+  const phoneInput = document.getElementById('staff-phone-input');
+  const phoneVal = phoneInput ? phoneInput.value.trim() : '';
+  if (!phoneVal) {
+    showToast('กรุณากรอกเบอร์โทรศัพท์', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/staff/phone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        staffId: currentStaff.staff_id,
+        phone: phoneVal
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      currentStaff = data.staff;
+      showToast(`💾 บันทึกเบอร์โทรศัพท์ของพนักงาน "${currentStaff.staff_name}" เรียบร้อยแล้ว`, 'success');
+      await refreshAllUI();
+    } else {
+      showToast(data.error || 'บันทึกเบอร์โทรศัพท์ไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    console.error('Error saving staff phone:', err);
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  }
+};
+
+// ข้อ 25: Admin ล้างคิวทั้งหมดของพนักงานทิ้งได้เลย
+window.handleAdminClearAllQueues = async () => {
+  if (!confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการ "ล้างคิวทั้งหมดของพนักงานทิ้งทั้งหมด"?\n\nการกระทำนี้จะลบรายการคิวรับซื้อขยะทุกรายการออกจากระบบทันที')) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/queues/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('🗑️ ล้างคิวงานทั้งหมดของพนักงานเรียบร้อยแล้ว!', 'success');
+      window.currentServingReportId = null;
+      await loadPickupQueue();
+      await loadSellerQueueStatus();
+      await refreshAllUI();
+    } else {
+      showToast(data.error || 'ไม่สามารถล้างคิวได้', 'error');
+    }
+  } catch (err) {
+    console.error('Error clearing queues:', err);
     showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
   }
 };

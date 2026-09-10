@@ -66,7 +66,7 @@
           <div class="user-info-text">
             <h3 id="seller-name-val">กำลังโหลด...</h3>
             <p>ID: <span id="seller-id-val">-</span> | Username: <span id="seller-username-val">-</span></p>
-            <p>เบอร์โทร: <span id="seller-phone-val">089-765-4321</span></p>
+            <p>เบอร์โทร: <span id="seller-phone-val">ยังไม่ได้ระบุเบอร์โทร</span></p>
           </div>
         </div>
 
@@ -387,6 +387,18 @@
               <span class="queue-badge-tag" style="background:var(--lime-accent); color:var(--navy-dark);">ปฏิบัติหน้าที่</span>
             </div>
           </div>
+          <!-- Staff Phone Input Box (ข้อ 24: ให้ staff กรอกและบันทึกเบอร์โทรของตนเองได้ เริ่มต้น 0123456789) -->
+          <div style="margin-top:12px; padding-top:10px; border-top:1px dashed rgba(255,255,255,0.2);">
+            <label style="font-size:0.8rem; color:rgba(255,255,255,0.9); font-weight:700; display:block; margin-bottom:4px;">
+              📞 เบอร์โทรศัพท์พนักงาน (สำหรับติดต่อลูกค้า):
+            </label>
+            <div style="display:flex; gap:8px;">
+              <input type="tel" id="staff-phone-input" class="figma-input-box" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.3); font-size:0.9rem;" value="0123456789" placeholder="0123456789" />
+              <button type="button" class="btn-figma-primary" onclick="saveStaffPhone()" style="width:auto; padding:6px 14px; font-size:0.8rem; white-space:nowrap; background:var(--lime-accent); color:var(--navy-dark);">
+                <i data-lucide="save" style="width:14px; height:14px;"></i> บันทึกเบอร์
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="figma-section-title">
@@ -460,11 +472,19 @@
           <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">✨ สะสมแต้มอย่างเดียวเพื่อนำไปแลกของรางวัล</p>
         </div>
 
+        <!-- Customer Decision Status Indicator (ข้อ 22) -->
+        <div id="emp-customer-decision-card" class="figma-card" style="margin-top:12px; background:#f8fafc; border:1.5px dashed #cbd5e1; text-align:center;">
+          <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted);">สถานะการตัดสินใจของลูกค้า:</div>
+          <div id="emp-customer-decision-status" style="font-size:0.95rem; font-weight:800; color:var(--amber-orange); margin-top:4px;">
+            ⏳ รอลูกค้าสแกน QR Code และกดยืนยันรับหรือปฏิเสธแต้ม...
+          </div>
+        </div>
+
         <div style="display:flex; gap:10px; margin-top:12px;">
           <button class="btn-figma-primary" id="btn-emp-generate-qr" style="flex:1;">
             <i data-lucide="qr-code"></i> Generate QR Code
           </button>
-          <button type="button" class="btn-figma-secondary" id="btn-emp-direct-confirm" onclick="handleDirectConfirmQueue()" style="flex:1;" title="ยืนยันคิวนี้เสร็จสิ้นทันที">
+          <button type="button" class="btn-figma-secondary" id="btn-emp-direct-confirm" onclick="handleDirectConfirmQueue()" style="flex:1; opacity:0.6; cursor:not-allowed;" disabled title="ยืนยันคิว (ปลดล็อคเมื่อลูกค้ากดยืนยันหรือปฏิเสธแล้ว)">
             <i data-lucide="check-circle-2"></i> Confirm Queue
           </button>
         </div>
@@ -497,13 +517,19 @@
            ADMIN VIEW (มุมมองผู้ดูแลระบบ: แดชบอร์ด 3 บล็อกในหน้าเดียว)
            =================================================================== -->
       <section id="view-admin-dashboard" class="view-section">
-        <div class="admin-header-banner">
+        <div class="admin-header-banner" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
           <div>
             <div class="admin-badge-pill"><i data-lucide="shield-check"></i> Super Administrator</div>
             <h2 style="color:#fff; margin-top:6px; font-size:1.35rem;">แผงควบคุมระบบ (Admin Dashboard)</h2>
             <p style="color:rgba(255,255,255,0.8); font-size:0.8rem; margin-top:2px;">
               จัดการระบบ จัดสรรของรางวัล อัตราแลกเปลี่ยนแต้ม และจัดการข้อมูลผู้ใช้แบบ Realtime
             </p>
+          </div>
+          <!-- ข้อ 25: เพิ่มฟังชันของ admin ให้สามารถล้างคิวทั้งหมดของพนักงานทิ้งได้เลย -->
+          <div>
+            <button type="button" class="btn-figma-primary" onclick="handleAdminClearAllQueues()" style="background:#ef4444; border-color:#b91c1c; color:#fff; font-size:0.85rem; padding:8px 16px; width:auto; white-space:nowrap;">
+              <i data-lucide="trash-2" style="width:16px; height:16px;"></i> 🗑️ ล้างคิวทั้งหมดของพนักงาน
+            </button>
           </div>
         </div>
 
@@ -942,13 +968,16 @@
           </div>
         </div>
 
-        <!-- Action Buttons -->
+        <!-- Action Buttons (ข้อ 22: มีทั้ง ยืนยันรับแต้ม และ ปฏิเสธแต้ม) -->
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <button id="btn-confirm-claim-points" class="btn-figma-primary" style="background: var(--emerald-green); color: #fff; border-color: var(--navy-dark); font-size: 1rem; padding: 14px;">
-            <i data-lucide="check-circle"></i> ยืนยันเพื่อรับแต้ม
+            <i data-lucide="check-circle"></i> ยืนยันเพื่อรับแต้ม (Accept Points)
           </button>
-          <button id="btn-cancel-claim-points" class="btn-figma-secondary" style="background: #e2e8f0; color: var(--navy-dark); border: 2px solid #cbd5e1;">
-            <i data-lucide="x"></i> ยกเลิก / ปิดหน้าต่าง
+          <button id="btn-reject-claim-points" class="btn-figma-secondary" style="background: #fee2e2; color: #b91c1c; border: 2px solid #f87171; font-size: 0.95rem; font-weight: 700; padding: 12px;">
+            <i data-lucide="x-circle"></i> ❌ ปฏิเสธแต้ม / ไม่รับแต้ม (Reject Points)
+          </button>
+          <button id="btn-cancel-claim-points" class="btn-figma-secondary" style="background: #e2e8f0; color: var(--navy-dark); border: 2px solid #cbd5e1; font-size: 0.85rem; padding: 8px;">
+            <i data-lucide="x"></i> ปิดหน้าต่าง
           </button>
         </div>
       </div>

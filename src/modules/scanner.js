@@ -28,6 +28,7 @@ export function initScannerModule(showToast, refreshAllUI) {
 
   // Setup Confirmation Modal Actions
   const btnConfirm = document.getElementById('btn-confirm-claim-points');
+  const btnReject = document.getElementById('btn-reject-claim-points');
   const btnCancel = document.getElementById('btn-cancel-claim-points');
 
   if (btnConfirm) {
@@ -36,10 +37,16 @@ export function initScannerModule(showToast, refreshAllUI) {
     });
   }
 
+  if (btnReject) {
+    btnReject.addEventListener('click', async () => {
+      await handleRejectClaimPoints(showToast, refreshAllUI);
+    });
+  }
+
   if (btnCancel) {
     btnCancel.addEventListener('click', () => {
       closeSummaryModal();
-      showToast('ยกเลิกรายการแล้ว', 'info');
+      showToast('ปิดหน้าต่างสรุปแล้ว', 'info');
     });
   }
 }
@@ -286,7 +293,57 @@ async function handleConfirmClaimPoints(showToast, refreshAllUI) {
   } finally {
     if (btnConfirm) {
       btnConfirm.disabled = false;
-      btnConfirm.innerHTML = '<i data-lucide="check-circle"></i> ยืนยันเพื่อรับแต้ม';
+      btnConfirm.innerHTML = '<i data-lucide="check-circle"></i> ยืนยันเพื่อรับแต้ม (Accept Points)';
+      if (window.lucide) window.lucide.createIcons();
+    }
+    isProcessingScan = false;
+  }
+}
+
+// ปฏิเสธแต้ม / ไม่รับแต้ม (ข้อ 22: Seller Reject)
+async function handleRejectClaimPoints(showToast, refreshAllUI) {
+  if (!pendingPayload) {
+    showToast('ไม่พบข้อมูลรายการขยะ', 'warning');
+    return;
+  }
+
+  const btnReject = document.getElementById('btn-reject-claim-points');
+  if (btnReject) {
+    btnReject.disabled = true;
+    btnReject.innerHTML = '<i data-lucide="loader" class="spin"></i> กำลังปฏิเสธแต้ม...';
+  }
+
+  try {
+    const user = window.getCurrentUser ? window.getCurrentUser() : null;
+    const targetUserId = (user && user.user_id) || localStorage.getItem('ECO_USER_ID') || 1;
+
+    const res = await fetch('/api/pickup/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: Number(targetUserId),
+        reportId: pendingPayload.reportId || null
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('❌ คุณได้ปฏิเสธแต้มเรียบร้อยแล้ว พนักงานจะได้รับแจ้งสถานะ', 'info');
+      closeSummaryModal();
+      await refreshAllUI();
+      if (window.switchView) {
+        window.switchView('view-seller-home');
+      }
+    } else {
+      showToast(data.error || 'เกิดข้อผิดพลาดในการปฏิเสธแต้ม', 'error');
+    }
+  } catch (err) {
+    console.error('Error rejecting points:', err);
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  } finally {
+    if (btnReject) {
+      btnReject.disabled = false;
+      btnReject.innerHTML = '<i data-lucide="x-circle"></i> ❌ ปฏิเสธแต้ม / ไม่รับแต้ม (Reject Points)';
       if (window.lucide) window.lucide.createIcons();
     }
     isProcessingScan = false;

@@ -49,7 +49,7 @@ const INITIAL_STORE = {
     {
       id: 'REQ-1082',
       address: '123/45 หมู่บ้านพฤกษา ซอย 8 ถ.สุขุมวิท กรุงเทพฯ',
-      phone: '089-765-4321',
+      phone: '',
       date: '2026-07-23',
       wasteTypes: ['พลาสติก', 'กระดาษ'],
       estWeight: '5 - 15 kg',

@@ -91,6 +91,7 @@ export function dbApiPlugin() {
     try { db.prepare('ALTER TABLE user ADD COLUMN address TEXT').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN seller_decision TEXT').run(); } catch(e) {}
 
     console.log(`[DB Plugin] Connected to SQLite database at: ${dbPath}`);
   } catch (err) {
@@ -192,7 +193,7 @@ export function dbApiPlugin() {
             if (!user) {
               const resInsert = db.prepare(
                 "INSERT INTO user (username, name, email, phone, points) VALUES (?, ?, ?, ?, ?)"
-              ).run(trimmed, trimmed, `${trimmed.toLowerCase()}@eco.com`, '089-765-4321', 670);
+              ).run(trimmed, trimmed, `${trimmed.toLowerCase()}@eco.com`, '', 670);
               user = db.prepare("SELECT * FROM user WHERE user_id = ?").get(resInsert.lastInsertRowid);
             }
 
@@ -224,11 +225,26 @@ export function dbApiPlugin() {
 
             let staff = db.prepare("SELECT * FROM staffs WHERE LOWER(staff_name) = LOWER(?)").get(trimmed);
             if (!staff) {
-              const resInsert = db.prepare("INSERT INTO staffs (staff_name, phone) VALUES (?, ?)").run(trimmed, '081-999-8888');
+              const resInsert = db.prepare("INSERT INTO staffs (staff_name, phone) VALUES (?, ?)").run(trimmed, '0123456789');
               staff = db.prepare("SELECT * FROM staffs WHERE staff_id = ?").get(resInsert.lastInsertRowid);
+            } else if (!staff.phone) {
+              db.prepare("UPDATE staffs SET phone = '0123456789' WHERE staff_id = ?").run(staff.staff_id);
+              staff.phone = '0123456789';
             }
 
             return sendJson({ staff });
+          }
+
+          // 2.05 UPDATE STAFF PHONE (ข้อ 24)
+          if (pathname === '/api/staff/phone' && method === 'POST') {
+            const { staffId, phone } = await parseBody();
+            if (!staffId) {
+              return sendJson({ error: 'Missing staffId' }, 400);
+            }
+            const phoneVal = (phone || '').trim() || '0123456789';
+            db.prepare('UPDATE staffs SET phone = ? WHERE staff_id = ?').run(phoneVal, staffId);
+            const staff = db.prepare('SELECT * FROM staffs WHERE staff_id = ?').get(staffId);
+            return sendJson({ success: true, staff });
           }
 
           // 2.1 LOGIN / ADMIN (ล็อคadmin ต้องชื่อ admin เเละใส่รหัส admin01 เท่านั้น)
@@ -475,7 +491,7 @@ export function dbApiPlugin() {
             return sendJson({ reports });
           }
 
-          // ดูสถานะคิวปัจจุบันของผู้ใช้คนขาย (ข้อ 11)
+          // ดูสถานะคิวปัจจุบันของผู้ใช้คนขาย (ข้อ 11, ข้อ 22)
           if (pathname.startsWith('/api/pickup/user/') && method === 'GET') {
             const userId = pathname.replace('/api/pickup/user/', '');
             const activeReport = db.prepare(`
@@ -487,19 +503,59 @@ export function dbApiPlugin() {
               LEFT JOIN user u ON g.user_id = u.user_id
               LEFT JOIN locations l ON g.location_id = l.location_id
               LEFT JOIN staffs s ON g.staff_id = s.staff_id
-              WHERE g.user_id = ? AND g.status = 'Waiting'
+              WHERE g.user_id = ? AND g.status IN ('Waiting', 'Seller Accepted', 'Seller Rejected')
               ORDER BY g.report_id DESC
               LIMIT 1
             `).get(userId);
             return sendJson({ report: activeReport || null });
           }
 
-          // ยืนยันคิวเสร็จสิ้น (Confirm Queue - ข้อ 20)
+          // ดูสถานะคิวตาม reportId แบบ real-time สำหรับพนักงาน (ข้อ 22)
+          if (pathname.startsWith('/api/pickup/status/') && method === 'GET') {
+            const reportId = pathname.replace('/api/pickup/status/', '');
+            const report = db.prepare(`
+              SELECT g.*, 
+                     u.name as user_name, u.phone as user_phone, 
+                     l.location_name,
+                     s.staff_name, s.phone as staff_phone
+              FROM garbage_reports g
+              LEFT JOIN user u ON g.user_id = u.user_id
+              LEFT JOIN locations l ON g.location_id = l.location_id
+              LEFT JOIN staffs s ON g.staff_id = s.staff_id
+              WHERE g.report_id = ?
+            `).get(reportId);
+            return sendJson({ report: report || null });
+          }
+
+          // ปฏิเสธแต้ม / การรับซื้อ (ข้อ 22: Seller Reject)
+          if (pathname === '/api/pickup/reject' && method === 'POST') {
+            const { reportId, userId } = await parseBody();
+            if (reportId) {
+              db.prepare("UPDATE garbage_reports SET seller_decision = 'rejected', status = 'Seller Rejected' WHERE report_id = ?").run(reportId);
+            } else if (userId) {
+              db.prepare("UPDATE garbage_reports SET seller_decision = 'rejected', status = 'Seller Rejected' WHERE user_id = ? AND status = 'Waiting'").run(userId);
+            }
+            return sendJson({ success: true, message: 'บันทึกการปฏิเสธแต้มเรียบร้อยแล้ว' });
+          }
+
+          // ยืนยันคิวเสร็จสิ้น (Confirm Queue - ข้อ 20, ข้อ 22: ต้องรอ seller ตัดสินใจก่อน)
           if (pathname === '/api/pickup/confirm' && method === 'POST') {
             const { reportId, staffId } = await parseBody();
             if (!reportId) {
               return sendJson({ error: 'Missing reportId' }, 400);
             }
+
+            const currentRep = db.prepare("SELECT * FROM garbage_reports WHERE report_id = ?").get(reportId);
+            if (!currentRep) {
+              return sendJson({ error: 'ไม่พบคิวนี้ในระบบ' }, 404);
+            }
+
+            if (!currentRep.seller_decision) {
+              return sendJson({ 
+                error: 'ไม่สามารถกดยืนยันคิวได้: รอลูกค้าสแกน QR Code และกดยืนยันรับหรือปฏิเสธแต้มก่อน' 
+              }, 400);
+            }
+
             db.prepare("UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?").run(reportId);
             const report = db.prepare(`
               SELECT g.*, 
@@ -517,7 +573,7 @@ export function dbApiPlugin() {
               try {
                 db.prepare(
                   "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-                ).run(staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''}`);
+                ).run(staffId, report ? report.location_id : 1, `พนักงานยืนยันเสร็จสิ้นคิว #${reportId} ของลูกค้า ${report ? report.user_name : ''} (ผลการตัดสินใจของลูกค้า: ${currentRep.seller_decision})`);
               } catch (e) {}
             }
             return sendJson({ success: true, report });
@@ -612,11 +668,12 @@ export function dbApiPlugin() {
               "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
             ).run(staffId, 1, `โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`);
 
-            // ปรับสถานะคิวเป็น Completed เมื่อรับแต้มเสร็จสิ้น
+            // ข้อ 22: เมื่อผู้ใช้กดรับแต้ม ปรับสถานะเป็น Seller Accepted พร้อมบันทึก seller_decision = 'accepted'
+            // พนักงานจะเป็นผู้กด Confirm Queue หลังจากนี้
             if (reportId) {
-              db.prepare("UPDATE garbage_reports SET status = 'Completed' WHERE report_id = ?").run(reportId);
+              db.prepare("UPDATE garbage_reports SET status = 'Seller Accepted', seller_decision = 'accepted' WHERE report_id = ?").run(reportId);
             } else {
-              db.prepare("UPDATE garbage_reports SET status = 'Completed' WHERE user_id = ? AND status = 'Waiting'").run(userId);
+              db.prepare("UPDATE garbage_reports SET status = 'Seller Accepted', seller_decision = 'accepted' WHERE user_id = ? AND status = 'Waiting'").run(userId);
             }
 
             const updatedUser = db.prepare("SELECT * FROM user WHERE user_id = ?").get(userId);
@@ -747,6 +804,19 @@ export function dbApiPlugin() {
             })();
 
             return sendJson({ success: true, message: `ลบพนักงาน "${targetStaff.staff_name}" (ID: ${staffId}) ออกจากระบบสำเร็จ!` });
+          }
+
+          // 15. ADMIN: CLEAR ALL QUEUES (ข้อ 25: ล้างคิวทั้งหมดของพนักงานทิ้งได้เลย)
+          if (pathname === '/api/admin/queues/clear' && method === 'POST') {
+            db.transaction(() => {
+              db.prepare("DELETE FROM garbage_reports").run();
+              try {
+                db.prepare(
+                  "INSERT INTO history_logs (staff_id, location_id, action, action_date) VALUES (?, ?, ?, datetime('now', 'localtime'))"
+                ).run(1, 1, 'แอดมินล้างคิวงานทั้งหมดของพนักงาน');
+              } catch (e) {}
+            })();
+            return sendJson({ success: true, message: 'ล้างคิวงานทั้งหมดของพนักงานเรียบร้อยแล้ว' });
           }
 
           // If no matching API
