@@ -92,6 +92,9 @@ export function dbApiPlugin() {
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN seller_decision TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE waste_history ADD COLUMN staff_id INTEGER').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE waste_history ADD COLUMN location_name TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE waste_history ADD COLUMN waste_details TEXT').run(); } catch(e) {}
 
     console.log(`[DB Plugin] Connected to SQLite database at: ${dbPath}`);
   } catch (err) {
@@ -676,7 +679,8 @@ export function dbApiPlugin() {
               hazardousKg = 0,
               totalWeight = 0,
               targetUserId = null,
-              reportId = null
+              reportId = null,
+              locationName = null
             } = await parseBody();
 
             if (!userId || !points) {
@@ -690,17 +694,38 @@ export function dbApiPlugin() {
 
             const totalKg = totalWeight > 0 ? totalWeight : (recycleKg + organicKg + generalKg + hazardousKg);
 
+            let finalLocation = locationName;
+            let finalStaffId = staffId;
+            if (reportId) {
+              const rep = db.prepare(`
+                SELECT l.location_name, g.staff_id 
+                FROM garbage_reports g 
+                LEFT JOIN locations l ON g.location_id = l.location_id 
+                WHERE g.report_id = ?
+              `).get(reportId);
+              if (rep) {
+                if (rep.location_name && !finalLocation) finalLocation = rep.location_name;
+                if (rep.staff_id) finalStaffId = rep.staff_id;
+              }
+            }
+            if (!finalLocation) {
+              const uRow = db.prepare('SELECT address FROM user WHERE user_id = ?').get(userId);
+              finalLocation = (uRow && uRow.address) ? uRow.address : 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)';
+            }
+
+            const wasteDetails = summary || `ขยะรีไซเคิล ${recycleKg} kg, ขยะเปียก ${organicKg} kg, ขยะทั่วไป ${generalKg} ถุง, ขยะอันตราย ${hazardousKg} ชิ้น`;
+
             db.prepare("UPDATE user SET points = points + ? WHERE user_id = ?").run(points, userId);
 
             db.prepare(`
-              INSERT INTO waste_history (user_id, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(userId, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points);
+              INSERT INTO waste_history 
+              (user_id, staff_id, location_name, waste_details, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(userId, finalStaffId, finalLocation, wasteDetails, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points);
 
-            safeLogHistory(`โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`, staffId, 1);
+            safeLogHistory(`โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`, finalStaffId, 1);
 
             // ข้อ 22: เมื่อผู้ใช้กดรับแต้ม ปรับสถานะเป็น Seller Accepted พร้อมบันทึก seller_decision = 'accepted'
-            // พนักงานจะเป็นผู้กด Confirm Queue หลังจากนี้
             if (reportId) {
               db.prepare("UPDATE garbage_reports SET status = 'Seller Accepted', seller_decision = 'accepted' WHERE report_id = ?").run(reportId);
             } else {
@@ -709,6 +734,32 @@ export function dbApiPlugin() {
 
             const updatedUser = db.prepare("SELECT * FROM user WHERE user_id = ?").get(userId);
             return sendJson({ success: true, user: updatedUser });
+          }
+
+          // 8.1 GET USER WASTE SALES HISTORY
+          if (pathname.startsWith('/api/user/sales-history/') && method === 'GET') {
+            const uid = pathname.split('/').pop();
+            const history = db.prepare(`
+              SELECT w.*, s.staff_name, s.phone as staff_phone
+              FROM waste_history w
+              LEFT JOIN staffs s ON w.staff_id = s.staff_id
+              WHERE w.user_id = ?
+              ORDER BY w.history_id DESC
+            `).all(uid);
+            return sendJson({ history });
+          }
+
+          // 8.2 GET STAFF WASTE PURCHASE HISTORY
+          if (pathname.startsWith('/api/staff/sales-history/') && method === 'GET') {
+            const sid = pathname.split('/').pop();
+            const history = db.prepare(`
+              SELECT w.*, u.name as user_name, u.username, u.phone as user_phone
+              FROM waste_history w
+              LEFT JOIN user u ON w.user_id = u.user_id
+              WHERE w.staff_id = ? OR (w.staff_id IS NULL AND ? = 1)
+              ORDER BY w.history_id DESC
+            `).all(sid, sid);
+            return sendJson({ history });
           }
 
           // 9. GET ALL STAFFS

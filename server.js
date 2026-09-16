@@ -92,6 +92,9 @@ async function initDatabase() {
     try { await execute('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER'); } catch(e) {}
     try { await execute('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT'); } catch(e) {}
     try { await execute('ALTER TABLE garbage_reports ADD COLUMN seller_decision TEXT'); } catch(e) {}
+    try { await execute('ALTER TABLE waste_history ADD COLUMN staff_id INTEGER'); } catch(e) {}
+    try { await execute('ALTER TABLE waste_history ADD COLUMN location_name TEXT'); } catch(e) {}
+    try { await execute('ALTER TABLE waste_history ADD COLUMN waste_details TEXT'); } catch(e) {}
 
     console.log('[Server] Database initialized successfully.');
   } catch (err) {
@@ -761,7 +764,8 @@ app.post('/api/points/add', async (req, res) => {
       hazardousKg = 0,
       totalWeight = 0,
       targetUserId = null,
-      reportId = null
+      reportId = null,
+      locationName = null
     } = req.body;
 
     if (!userId || !points) {
@@ -775,11 +779,34 @@ app.post('/api/points/add', async (req, res) => {
 
     const totalKg = totalWeight > 0 ? totalWeight : (recycleKg + organicKg + generalKg + hazardousKg);
 
+    let finalLocation = locationName;
+    let finalStaffId = staffId;
+    if (reportId) {
+      const rep = await queryOne(`
+        SELECT l.location_name, g.staff_id 
+        FROM garbage_reports g 
+        LEFT JOIN locations l ON g.location_id = l.location_id 
+        WHERE g.report_id = ?
+      `, [reportId]);
+      if (rep) {
+        if (rep.location_name && !finalLocation) finalLocation = rep.location_name;
+        if (rep.staff_id) finalStaffId = rep.staff_id;
+      }
+    }
+    if (!finalLocation) {
+      const uRow = await queryOne('SELECT address FROM user WHERE user_id = ?', [userId]);
+      finalLocation = (uRow && uRow.address) ? uRow.address : 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)';
+    }
+
+    const wasteDetails = summary || `ขยะรีไซเคิล ${recycleKg} kg, ขยะเปียก ${organicKg} kg, ขยะทั่วไป ${generalKg} ถุง, ขยะอันตราย ${hazardousKg} ชิ้น`;
+
     const batchOps = [
       { sql: 'UPDATE user SET points = points + ? WHERE user_id = ?', args: [points, userId] },
       { 
-        sql: 'INSERT INTO waste_history (user_id, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned) VALUES (?, ?, ?, ?, ?, ?, ?)', 
-        args: [userId, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points] 
+        sql: `INSERT INTO waste_history 
+              (user_id, staff_id, location_name, waste_details, recycle_kg, organic_kg, general_kg, hazardous_kg, total_kg, points_earned) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
+        args: [userId, finalStaffId, finalLocation, wasteDetails, recycleKg, organicKg, generalKg, hazardousKg, totalKg, points] 
       }
     ];
 
@@ -798,10 +825,44 @@ app.post('/api/points/add', async (req, res) => {
 
     await db.batch(batchOps);
 
-    await safeLogHistory(`โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`, staffId, 1);
+    await safeLogHistory(`โอนแต้มให้ผู้ใช้ #${userId} จำนวน +${points} แต้ม (ขยะรวม ${totalKg} kg: ${summary || ''})`, finalStaffId, 1);
 
     const updatedUser = await queryOne('SELECT * FROM user WHERE user_id = ?', [userId]);
     res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.1 GET USER WASTE SALES HISTORY (ประวัติการขายขยะของ user)
+app.get('/api/user/sales-history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const history = await queryAll(`
+      SELECT w.*, s.staff_name, s.phone as staff_phone
+      FROM waste_history w
+      LEFT JOIN staffs s ON w.staff_id = s.staff_id
+      WHERE w.user_id = ?
+      ORDER BY w.history_id DESC
+    `, [userId]);
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8.2 GET STAFF WASTE PURCHASE HISTORY (ประวัติการรับซื้อขยะของ staff)
+app.get('/api/staff/sales-history/:staffId', async (req, res) => {
+  try {
+    const { staffId } = req.params;
+    const history = await queryAll(`
+      SELECT w.*, u.name as user_name, u.username, u.phone as user_phone
+      FROM waste_history w
+      LEFT JOIN user u ON w.user_id = u.user_id
+      WHERE w.staff_id = ? OR (w.staff_id IS NULL AND ? = 1)
+      ORDER BY w.history_id DESC
+    `, [staffId, staffId]);
+    res.json({ history });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

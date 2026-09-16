@@ -254,7 +254,8 @@ async function handleConfirmClaimPoints(showToast, refreshAllUI) {
         hazardousKg: pendingPayload.hazardousKg || 0,
         totalWeight: pendingPayload.totalWeight || 0,
         targetUserId: pendingPayload.targetUserId || null,
-        reportId: pendingPayload.reportId || null
+        reportId: pendingPayload.reportId || null,
+        locationName: pendingPayload.location || null
       })
     });
 

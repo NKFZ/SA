@@ -385,6 +385,10 @@ function switchView(viewId) {
     loadSellerQueueStatus();
   } else if (viewId === 'view-employee-queue') {
     loadPickupQueue();
+  } else if (viewId === 'view-seller-home') {
+    loadUserSalesHistory();
+  } else if (viewId === 'view-employee-history') {
+    loadStaffSalesHistory();
   } else if (viewId === 'view-seller-profile' && currentUser) {
     const profileAddr = document.getElementById('profile-input-address');
     const profilePhone = document.getElementById('profile-input-phone');
@@ -458,12 +462,13 @@ function setupEmployeeFormEvents() {
     }
   }
 
-  window.employeeGoToLocation = (reportId, name, userId) => {
+  window.employeeGoToLocation = (reportId, name, userId, locName) => {
     const label = document.getElementById('form-customer-name-display');
     if (label) label.textContent = `${name} (User #${userId || 1}) - คิวคำขอ #${reportId}`;
     window.currentServingUserId = userId || 1;
     window.currentServingUserName = name || 'ลูกค้า';
     window.currentServingReportId = reportId || null;
+    window.currentServingLocation = locName || null;
 
     // รีเซ็ตสถานะปุ่มยืนยันให้ disabled ไว้ก่อน (ข้อ 22)
     const confirmBtn = document.getElementById('btn-emp-direct-confirm');
@@ -552,7 +557,8 @@ function setupEmployeeFormEvents() {
             hazardousKg: currentEmployeePayload.hazardousKg || 0,
             totalWeight: currentEmployeePayload.totalWeight || 0,
             targetUserId: targetUserId,
-            reportId: currentEmployeePayload.reportId || window.currentServingReportId || null
+            reportId: currentEmployeePayload.reportId || window.currentServingReportId || null,
+            locationName: currentEmployeePayload.location || window.currentServingLocation || null
           })
         });
 
@@ -639,7 +645,7 @@ function generateEmployeeQR() {
     hazardousKg: totals.hazardousKg,
     summary: summaryParts.join(', '),
     collectorName: currentStaff ? currentStaff.staff_name : 'สมชาย เก็บขยะ (EMP-8821)',
-    location: 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)',
+    location: window.currentServingLocation || 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)',
     staffId: currentStaff ? currentStaff.staff_id : 1,
     timestamp: Date.now()
   };
@@ -1116,6 +1122,146 @@ async function loadRedemptionsHistory() {
   }
 }
 
+// โหลดประวัติการขายขยะของ User จากตาราง waste_history (แสดงวันเวลา, สถานที่, ชื่อ staff, และรายละเอียดขยะ)
+async function loadUserSalesHistory() {
+  const container = document.getElementById('seller-sales-history-box');
+  if (!container) return;
+
+  if (!currentUser) {
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:12px;">กรุณาเข้าสู่ระบบ</p>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/user/sales-history/${currentUser.user_id}`);
+    const data = await res.json();
+    const history = data.history || [];
+
+    if (history.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:20px 8px; color:var(--text-muted); font-size:0.85rem;">
+          <i data-lucide="package-open" style="width:32px; height:32px; margin:0 auto 6px auto; opacity:0.4; display:block;"></i>
+          <div>ยังไม่มีประวัติการขายขยะในระบบ</div>
+        </div>
+      `;
+      createIcons({ icons });
+      return;
+    }
+
+    container.innerHTML = history.map(tx => {
+      const staffName = tx.staff_name || 'เจ้าหน้าที่ทั่วไป (Staff)';
+      const staffPhone = tx.staff_phone ? ` (โทร: ${tx.staff_phone})` : '';
+      const locationName = tx.location_name || 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)';
+      const wasteDetails = tx.waste_details || `ขยะรีไซเคิล ${tx.recycle_kg || 0} kg, เปียก ${tx.organic_kg || 0} kg, ทั่วไป ${tx.general_kg || 0} ถุง, อันตราย ${tx.hazardous_kg || 0} ชิ้น`;
+      const dateStr = tx.created_at || 'เมื่อสักครู่';
+
+      return `
+        <div style="padding:12px; margin-bottom:10px; background:#ffffff; border-radius:12px; border:1px solid rgba(0,0,0,0.08); box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="font-size:0.8rem; color:var(--text-muted); display:flex; align-items:center; gap:4px;">
+              <i data-lucide="clock" style="width:13px; height:13px;"></i>
+              <span>${dateStr}</span>
+            </div>
+            <div style="font-weight:800; color:var(--emerald-green); font-size:0.95rem; background:#ecfdf5; padding:2px 8px; border-radius:6px; border:1px solid #a7f3d0;">
+              +${(tx.points_earned || 0).toLocaleString()} แต้ม
+            </div>
+          </div>
+          <div style="font-size:0.82rem; color:var(--navy-dark); margin-bottom:4px; display:flex; align-items:flex-start; gap:5px;">
+            <i data-lucide="map-pin" style="width:14px; height:14px; color:#3b82f6; flex-shrink:0; margin-top:2px;"></i>
+            <span><strong>สถานที่:</strong> ${locationName}</span>
+          </div>
+          <div style="font-size:0.82rem; color:var(--navy-dark); margin-bottom:6px; display:flex; align-items:center; gap:5px;">
+            <i data-lucide="user-check" style="width:14px; height:14px; color:#10b981; flex-shrink:0;"></i>
+            <span><strong>เจ้าหน้าที่รับซื้อ:</strong> ${staffName}${staffPhone}</span>
+          </div>
+          <div style="background:#f8fafc; border-radius:8px; padding:8px 10px; font-size:0.8rem; color:#334155; border:1px solid #f1f5f9;">
+            <div style="font-weight:700; margin-bottom:2px; color:#475569; display:flex; justify-content:space-between;">
+              <span><i data-lucide="trash-2" style="width:12px; height:12px; vertical-align:middle;"></i> รายละเอียดขยะ:</span>
+              <span style="color:#0284c7; font-weight:700;">รวม ${tx.total_kg || 0} kg</span>
+            </div>
+            <div>${wasteDetails}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    createIcons({ icons });
+  } catch (err) {
+    console.error('Error loading user sales history:', err);
+    container.innerHTML = '<p style="text-align:center; color:var(--danger-red); font-size:0.85rem; padding:12px;">เกิดข้อผิดพลาดในการโหลดประวัติการขาย</p>';
+  }
+}
+
+// โหลดประวัติการรับซื้อขยะของ Staff จากตาราง waste_history (แสดงวันเวลา, สถานที่, ชื่อ user, และรายละเอียดขยะ)
+async function loadStaffSalesHistory() {
+  const container = document.getElementById('employee-history-cards-container');
+  if (!container) return;
+
+  if (!currentStaff) {
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:16px;">กรุณาเลือกหรือเข้าสู่ระบบพนักงาน</p>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/staff/sales-history/${currentStaff.staff_id}`);
+    const data = await res.json();
+    const history = data.history || [];
+
+    if (history.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:30px 12px; color:var(--text-muted); font-size:0.85rem;">
+          <i data-lucide="clipboard-list" style="width:36px; height:36px; margin:0 auto 8px auto; opacity:0.4; display:block;"></i>
+          <div>ยังไม่มีประวัติการรับซื้อขยะสำหรับ ${currentStaff.staff_name}</div>
+        </div>
+      `;
+      createIcons({ icons });
+      return;
+    }
+
+    container.innerHTML = history.map(tx => {
+      const customerName = tx.user_name || tx.username || `ลูกค้า #${tx.user_id}`;
+      const customerPhone = tx.user_phone ? ` (โทร: ${tx.user_phone})` : '';
+      const locationName = tx.location_name || 'จุดบริการรับซื้อขยะเคลื่อนที่ (กรุงเทพฯ)';
+      const wasteDetails = tx.waste_details || `ขยะรีไซเคิล ${tx.recycle_kg || 0} kg, เปียก ${tx.organic_kg || 0} kg, ทั่วไป ${tx.general_kg || 0} ถุง, อันตราย ${tx.hazardous_kg || 0} ชิ้น`;
+      const dateStr = tx.created_at || 'เมื่อสักครู่';
+
+      return `
+        <div style="padding:14px; margin-bottom:12px; background:#ffffff; border-radius:12px; border:1px solid rgba(0,0,0,0.08); box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-size:0.8rem; color:var(--text-muted); display:flex; align-items:center; gap:4px;">
+              <i data-lucide="clock" style="width:13px; height:13px;"></i>
+              <span>${dateStr}</span>
+            </div>
+            <div style="font-weight:800; color:var(--emerald-green); font-size:0.95rem; background:#ecfdf5; padding:3px 8px; border-radius:6px; border:1px solid #a7f3d0;">
+              โอนแล้ว +${(tx.points_earned || 0).toLocaleString()} แต้ม
+            </div>
+          </div>
+          <div style="font-size:0.85rem; color:var(--navy-dark); margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+            <i data-lucide="user" style="width:15px; height:15px; color:#3b82f6; flex-shrink:0;"></i>
+            <span><strong>ผู้ขาย (ลูกค้า):</strong> ${customerName}${customerPhone}</span>
+          </div>
+          <div style="font-size:0.85rem; color:var(--navy-dark); margin-bottom:8px; display:flex; align-items:flex-start; gap:6px;">
+            <i data-lucide="map-pin" style="width:15px; height:15px; color:#f59e0b; flex-shrink:0; margin-top:2px;"></i>
+            <span><strong>สถานที่รับซื้อ:</strong> ${locationName}</span>
+          </div>
+          <div style="background:#f8fafc; border-radius:8px; padding:10px; font-size:0.82rem; color:#334155; border:1px solid #f1f5f9;">
+            <div style="font-weight:700; margin-bottom:4px; color:#475569; display:flex; justify-content:space-between;">
+              <span><i data-lucide="scale" style="width:13px; height:13px; vertical-align:middle;"></i> รายละเอียดขยะที่รับซื้อ:</span>
+              <span style="color:#0284c7; font-weight:800;">น้ำหนักรวม ${tx.total_kg || 0} kg</span>
+            </div>
+            <div>${wasteDetails}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    createIcons({ icons });
+  } catch (err) {
+    console.error('Error loading staff sales history:', err);
+    container.innerHTML = '<p style="text-align:center; color:var(--danger-red); font-size:0.85rem; padding:16px;">เกิดข้อผิดพลาดในการโหลดประวัติการรับซื้อ</p>';
+  }
+}
+
 // โหลดคำขอจากตาราง garbage_reports (ข้อ 20: ล็อคคิวแบบ FIFO ต้อง confirm คิวแรกก่อนถึงจะกดรับคิวถัดไปได้)
 async function loadPickupQueue() {
   const container = document.getElementById('employee-queue-cards-container');
@@ -1157,7 +1303,7 @@ async function loadPickupQueue() {
               <div>รายละเอียด : ${r.descriiption || '-'}</div>
               <div>พนักงานที่รับผิดชอบ : <strong style="color:var(--navy-dark);">${r.staff_name || 'ยังไม่ระบุ'}</strong></div>
             </div>
-            <button class="btn-figma-primary margin-top-md" onclick="employeeGoToLocation('${r.report_id}', '${r.user_name || 'ลูกค้า'}', ${r.user_id || 1})">
+            <button class="btn-figma-primary margin-top-md" onclick="employeeGoToLocation('${r.report_id}', '${(r.user_name || 'ลูกค้า').replace(/'/g, "\\'")}', ${r.user_id || 1}, '${(r.location_name || '').replace(/'/g, "\\'")}')">
               <i data-lucide="navigation"></i> Go To Location (ไปรับซื้อขยะคิวนี้)
             </button>
           </div>
@@ -1257,6 +1403,10 @@ export async function refreshAllUI() {
   await loadWasteRates();
   await loadRewards();
   await loadRedemptionsHistory();
+  await loadUserSalesHistory();
+  if (currentStaff) {
+    await loadStaffSalesHistory();
+  }
   await loadSellerQueueStatus();
   await loadPickupQueue();
   await loadUserWasteStats();

@@ -111,12 +111,12 @@
           </button>
         </div>
 
-        <!-- Recent Redemptions & Transactions -->
+        <!-- User Waste Sales History (ประวัติการขายขยะของ user) -->
         <div class="figma-section-title">
-          <i data-lucide="history"></i> ประวัติการแลกของรางวัลล่าสุด (Redemptions)
+          <i data-lucide="history"></i> ประวัติการขายขยะ (Sales History)
         </div>
-        <div class="figma-card" style="padding:14px;" id="seller-recent-history-box">
-          <!-- Rendered by JS from DB redemptions -->
+        <div class="figma-card" style="padding:14px;" id="seller-sales-history-box">
+          <!-- Rendered by JS from DB waste_history -->
         </div>
       </section>
 
@@ -513,6 +513,16 @@
         </div>
       </section>
 
+      <!-- Employee View 4: Purchase History (ประวัติการรับซื้อขยะของพนักงาน) -->
+      <section id="view-employee-history" class="view-section">
+        <div class="figma-section-title">
+          <i data-lucide="history"></i> ประวัติการรับซื้อขยะ (Purchase History)
+        </div>
+        <div class="figma-card" style="padding:14px;" id="employee-history-cards-container">
+          <!-- Rendered by JS from DB waste_history -->
+        </div>
+      </section>
+
       <!-- ===================================================================
            ADMIN VIEW (มุมมองผู้ดูแลระบบ: แดชบอร์ด 3 บล็อกในหน้าเดียว)
            =================================================================== -->
@@ -811,6 +821,10 @@
         <button class="nav-tab-item" data-target="view-employee-qr">
           <i data-lucide="qr-code"></i>
           <span>QR Code</span>
+        </button>
+        <button class="nav-tab-item" data-target="view-employee-history">
+          <i data-lucide="history"></i>
+          <span>History</span>
         </button>
       </div>
 
