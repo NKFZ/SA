@@ -510,10 +510,6 @@
           <canvas id="generated-qr-canvas" style="width:220px !important; height:220px !important; margin:0 auto;"></canvas>
           <div id="generated-qr-code-id" style="font-family:monospace; font-weight:800; margin-top:8px;">TX-98421</div>
           <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">ยื่นหน้าจอนี้ให้ผู้ขายใช้กล้องสแกนรับแต้ม</p>
-          
-          <button class="btn-figma-secondary margin-top-md" id="btn-emp-auto-transfer">
-            <i data-lucide="zap"></i> ทดสอบอนุมัติโอนแต้มให้ลูกค้าทันที
-          </button>
         </div>
       </section>
 
@@ -907,9 +903,9 @@
             <input type="tel" id="reg-input-phone" class="login-input-field" placeholder="กรอกเบอร์โทรศัพท์" required />
           </div>
 
-          <div style="margin-bottom:10px;">
+          <div style="margin-bottom:10px;" id="reg-group-address">
             <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
-              ที่อยู่ (Address):
+              ที่อยู่ (Address): <span style="color:red;">*</span>
             </label>
             <textarea id="reg-input-address" class="login-input-field" rows="2" placeholder="กรอกที่อยู่ของคุณ" required style="resize:vertical;"></textarea>
           </div>
@@ -928,11 +924,11 @@
             </label>
             <div style="display:flex; gap:10px;">
               <label style="flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:10px; cursor:pointer; background:#fff;" id="reg-role-seller-label">
-                <input type="radio" name="reg-role" value="seller" checked style="accent-color:var(--emerald-green);" />
+                <input type="radio" name="reg-role" value="seller" checked onchange="handleRegRoleChange('seller')" style="accent-color:var(--emerald-green);" />
                 <span style="font-size:0.85rem;"><strong>คนขายขยะ (Seller)</strong></span>
               </label>
               <label style="flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:10px; cursor:pointer; background:#fff;" id="reg-role-staff-label">
-                <input type="radio" name="reg-role" value="staff" style="accent-color:var(--emerald-green);" />
+                <input type="radio" name="reg-role" value="staff" onchange="handleRegRoleChange('staff')" style="accent-color:var(--emerald-green);" />
                 <span style="font-size:0.85rem;"><strong>พนักงาน (Staff)</strong></span>
               </label>
             </div>

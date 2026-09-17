@@ -206,6 +206,10 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน (ชื่อผู้ใช้, รหัสผ่าน, อีเมล, บทบาท)' });
     }
 
+    if (cleanRole === 'seller' && !cleanAddress) {
+      return res.status(400).json({ error: 'สำหรับคนขายขยะ (Seller) กรุณากรอกที่อยู่ด้วย' });
+    }
+
     if (cleanRole === 'admin' || cleanUser.toLowerCase() === 'admin') {
       return res.status(403).json({ error: 'ไม่อนุญาตให้ลงทะเบียนเป็นผู้ดูแลระบบ (Admin)' });
     }

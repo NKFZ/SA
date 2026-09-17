@@ -111,8 +111,26 @@ function setupLoginModalEvents() {
       if (formRegister) formRegister.style.display = 'block';
       if (formLogin) formLogin.style.display = 'none';
       if (title) title.textContent = 'สมัครสมาชิก EcoRecycle';
+      const roleRadio = document.querySelector('input[name="reg-role"]:checked');
+      window.handleRegRoleChange(roleRadio ? roleRadio.value : 'seller');
     }
     createIcons({ icons });
+  };
+
+  // ข้อ 33: หน้า register ของ staff ไม่ต้องใส่ที่อยู่
+  window.handleRegRoleChange = (role) => {
+    const addrGroup = document.getElementById('reg-group-address');
+    const addrInput = document.getElementById('reg-input-address');
+    if (!addrGroup || !addrInput) return;
+
+    if (role === 'staff') {
+      addrGroup.style.display = 'none';
+      addrInput.removeAttribute('required');
+      addrInput.value = '';
+    } else {
+      addrGroup.style.display = 'block';
+      addrInput.setAttribute('required', 'required');
+    }
   };
 
   window.openLoginModal = (tab = 'login') => {
@@ -200,9 +218,17 @@ function setupLoginModalEvents() {
     const roleRadio = document.querySelector('input[name="reg-role"]:checked');
     const role = roleRadio ? roleRadio.value : 'seller';
 
-    if (!email || !username || !phone || !address || !password) {
-      showToast('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง', 'warning');
-      return;
+    // ข้อ 33: ถ้าเป็น staff ไม่ต้องกรอกที่อยู่
+    if (role === 'seller') {
+      if (!email || !username || !phone || !address || !password) {
+        showToast('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง (รวมที่อยู่)', 'warning');
+        return;
+      }
+    } else {
+      if (!email || !username || !phone || !password) {
+        showToast('กรุณากรอกข้อมูลให้ครบถ้วน (อีเมล, ชื่อผู้ใช้งาน, เบอร์โทรศัพท์, รหัสผ่าน)', 'warning');
+        return;
+      }
     }
 
     if (username.toLowerCase() === 'admin') {
@@ -529,11 +555,6 @@ function setupEmployeeFormEvents() {
     const label = document.getElementById('form-customer-name-display');
     if (!label) return;
 
-    if (window.currentServingReportId && window.currentServingUserName) {
-      label.textContent = `${window.currentServingUserName} (User #${window.currentServingUserId || 1}) - คิวคำขอ #${window.currentServingReportId}`;
-      return;
-    }
-
     try {
       const res = await fetch('/api/pickup');
       const data = await res.json();
@@ -541,12 +562,19 @@ function setupEmployeeFormEvents() {
       const waitingReports = reports.filter(r => r.status === 'Waiting');
       waitingReports.sort((a, b) => a.report_id - b.report_id);
 
-      let assigned = null;
-      if (currentStaff) {
-        assigned = waitingReports.find(r => Number(r.staff_id) === Number(currentStaff.staff_id));
+      // ถ้ามี currentServingReportId ตรวจสอบว่าคิวนั้นยังเป็น Waiting อยู่หรือไม่
+      let stillValid = null;
+      if (window.currentServingReportId) {
+        stillValid = waitingReports.find(r => Number(r.report_id) === Number(window.currentServingReportId));
       }
-      if (!assigned && waitingReports.length > 0) {
-        assigned = waitingReports[0];
+
+      let assigned = stillValid;
+      if (!assigned) {
+        if (currentStaff && currentStaff.staff_id) {
+          assigned = waitingReports.find(r => Number(r.staff_id) === Number(currentStaff.staff_id));
+        } else if (!currentStaff && waitingReports.length > 0) {
+          assigned = waitingReports[0];
+        }
       }
 
       if (assigned) {
@@ -556,11 +584,18 @@ function setupEmployeeFormEvents() {
         window.currentServingLocation = assigned.location_name || '';
         label.textContent = `${assigned.user_name || 'ลูกค้าทั่วไป'} (User #${assigned.user_id || 1}) - คิวคำขอ #${assigned.report_id}`;
       } else {
-        label.textContent = 'ไม่มีคิวที่กำลังให้บริการ (ยังไม่มีคำขอเรียกรถ)';
+        window.currentServingUserId = null;
+        window.currentServingUserName = null;
+        window.currentServingReportId = null;
+        window.currentServingLocation = null;
+        label.textContent = 'ไม่มีคิวที่กำลังให้บริการ (พนักงานยังไม่มีคิวงานที่ต้องทำ)';
       }
     } catch (e) {
-      label.textContent = 'ยังไม่ได้เลือกคิวลูกค้า';
+      window.currentServingReportId = null;
+      label.textContent = 'ไม่มีคิวที่กำลังให้บริการ';
     }
+
+    calcEmpTotals();
   };
 
   window.employeeGoToLocation = (reportId, name, userId, locName) => {
@@ -616,7 +651,11 @@ function setupEmployeeFormEvents() {
       if (res.ok && data.success) {
         showToast(`✅ ยืนยันคิว #${reportIdToConfirm} เสร็จสิ้นแล้ว ปลดล็อคคิวถัดไปเรียบร้อย`, 'success');
         window.currentServingReportId = null;
+        window.currentServingUserId = null;
+        window.currentServingUserName = null;
+        window.currentServingLocation = null;
         stopServingReportPolling();
+        calcEmpTotals();
         await loadPickupQueue();
         switchView('view-employee-home');
       } else {
@@ -635,58 +674,6 @@ function setupEmployeeFormEvents() {
     btnGenerateQR.addEventListener('click', generateEmployeeQR);
   }
 
-  const btnAutoTransfer = document.getElementById('btn-emp-auto-transfer');
-  if (btnAutoTransfer) {
-    btnAutoTransfer.addEventListener('click', async () => {
-      if (!currentEmployeePayload) {
-        showToast('กรุณาสร้าง QR Code ก่อน', 'warning');
-        return;
-      }
-
-      const targetUserId = currentEmployeePayload.targetUserId || (currentUser ? currentUser.user_id : (window.currentServingUserId || 1));
-
-      // Add points to user in SQLite database (ข้อ 3: เฉพาะแต้ม + บันทึกสถิติน้ำหนัก)
-      try {
-        const res = await fetch('/api/points/add', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: targetUserId,
-            points: currentEmployeePayload.points,
-            summary: currentEmployeePayload.summary,
-            staffId: currentStaff ? currentStaff.staff_id : 1,
-            recycleKg: currentEmployeePayload.recycleKg || 0,
-            organicKg: currentEmployeePayload.organicKg || 0,
-            generalKg: currentEmployeePayload.generalKg || 0,
-            hazardousKg: currentEmployeePayload.hazardousKg || 0,
-            totalWeight: currentEmployeePayload.totalWeight || 0,
-            targetUserId: targetUserId,
-            reportId: currentEmployeePayload.reportId || window.currentServingReportId || null,
-            locationName: currentEmployeePayload.location || window.currentServingLocation || null
-          })
-        });
-
-        const data = await res.json();
-        if (data.success) {
-          currentUser = data.user;
-          try {
-            confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-          } catch (e) {}
-
-          showToast(`อนุมัติโอนแต้มสำเร็จ! +${currentEmployeePayload.points} แต้มให้ลูกค้า และปิดคิวเรียบร้อย`, 'success');
-          window.currentServingReportId = null;
-          await refreshAllUI();
-          switchRole('seller', false);
-          switchView('view-seller-home');
-        } else {
-          showToast(data.error || 'เกิดข้อผิดพลาดในการบันทึกแต้ม', 'error');
-        }
-      } catch (err) {
-        console.error('Points transfer error:', err);
-        showToast('เกิดข้อผิดพลาดในการบันทึกแต้มลงฐานข้อมูล', 'error');
-      }
-    });
-  }
 }
 
 // ข้อ 3: คำนวณเฉพาะแต้มสะสมเท่านั้น (ไม่มีเงิน) - ใช้ตัวคูณขยะ activeRates จากฐานข้อมูล
@@ -718,14 +705,14 @@ function calcEmpTotals() {
   const scoreEl = document.getElementById('emp-total-score-display');
   if (scoreEl) scoreEl.textContent = `${totalPoints} แต้ม`;
 
-  // ตรวจสอบความถูกต้องสำหรับปุ่ม Generate QR Code
-  // ถ้าไม่กดติ๊ก หรือไม่ใส่น้ำหนักเลย จะไม่สามารถกด scan qr code ได้
+  // ข้อ 31: ถ้า staff ไม่ได้มีคิวอยู่ จะไม่สามารถกดสร้าง qr code ได้
   const btnGenQR = document.getElementById('btn-emp-generate-qr');
   const hasChecked = !!(chkRecycle || chkOrganic || chkGeneral || chkHazardous);
   const hasWeight = totalPoints > 0;
+  const hasQueue = !!window.currentServingReportId;
 
   if (btnGenQR) {
-    if (hasChecked && hasWeight) {
+    if (hasChecked && hasWeight && hasQueue) {
       btnGenQR.disabled = false;
       btnGenQR.style.opacity = '1';
       btnGenQR.style.cursor = 'pointer';
@@ -734,15 +721,27 @@ function calcEmpTotals() {
       btnGenQR.disabled = true;
       btnGenQR.style.opacity = '0.5';
       btnGenQR.style.cursor = 'not-allowed';
-      btnGenQR.title = 'กรุณาติ๊กเลือกประเภทขยะและระบุน้ำหนักก่อนสร้าง QR Code';
+      if (!hasQueue) {
+        btnGenQR.title = 'พนักงานยังไม่มีคิวลูกค้าที่กำลังให้บริการ ไม่สามารถสร้าง QR Code ได้';
+      } else if (!hasChecked) {
+        btnGenQR.title = 'กรุณาติ๊กเลือกประเภทขยะก่อนสร้าง QR Code';
+      } else {
+        btnGenQR.title = 'กรุณาระบุน้ำหนักขยะก่อนสร้าง QR Code';
+      }
     }
   }
 
-  return { recycleKg, organicKg, generalBags, generalKg, hazardousItems, hazardousKg, totalPoints, totalWeight, hasChecked, hasWeight };
+  return { recycleKg, organicKg, generalBags, generalKg, hazardousItems, hazardousKg, totalPoints, totalWeight, hasChecked, hasWeight, hasQueue };
 }
 
 function generateEmployeeQR() {
   const totals = calcEmpTotals();
+
+  // ข้อ 31: ถ้า staff ไม่ได้มีคิวอยู่ จะไม่สามารถกดสร้าง qr code ได้
+  if (!window.currentServingReportId || !totals.hasQueue) {
+    showToast('คุณยังไม่มีคิวลูกค้าที่กำลังให้บริการ ไม่สามารถสร้าง QR Code ได้', 'warning');
+    return;
+  }
 
   if (!totals.hasChecked) {
     showToast('กรุณาติ๊กเลือกประเภทขยะที่ seller นำมาขายอย่างน้อย 1 ประเภท', 'warning');

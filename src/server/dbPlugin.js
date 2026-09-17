@@ -226,6 +226,10 @@ export function dbApiPlugin() {
               return sendJson({ error: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน (ชื่อผู้ใช้, รหัสผ่าน, อีเมล, บทบาท)' }, 400);
             }
 
+            if (cleanRole === 'seller' && !cleanAddress) {
+              return sendJson({ error: 'สำหรับคนขายขยะ (Seller) กรุณากรอกที่อยู่ด้วย' }, 400);
+            }
+
             if (cleanRole === 'admin' || cleanUser.toLowerCase() === 'admin') {
               return sendJson({ error: 'ไม่อนุญาตให้ลงทะเบียนเป็นผู้ดูแลระบบ (Admin)' }, 403);
             }
