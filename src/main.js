@@ -76,52 +76,49 @@ function setupLoginModalEvents() {
     });
   }
 
-  window.selectLoginRole = (role) => {
-    pendingLoginRole = role;
-    const cardSeller = document.getElementById('login-choice-seller');
-    const cardStaff = document.getElementById('login-choice-staff');
-    const cardAdmin = document.getElementById('login-choice-admin');
-    const nameLabel = document.getElementById('login-name-label');
-    const inputName = document.getElementById('login-input-name');
+  window.switchAuthTab = (tab) => {
+    const tabLogin = document.getElementById('tab-btn-login');
+    const tabRegister = document.getElementById('tab-btn-register');
+    const formLogin = document.getElementById('auth-login-form');
+    const formRegister = document.getElementById('auth-register-form');
+    const title = document.getElementById('auth-modal-title');
 
-    cardSeller?.classList.remove('selected');
-    cardStaff?.classList.remove('selected');
-    cardAdmin?.classList.remove('selected');
-
-    const passwordGroup = document.getElementById('login-password-group');
-    const inputPassword = document.getElementById('login-input-password');
-
-    if (role === 'seller') {
-      cardSeller?.classList.add('selected');
-      if (nameLabel) nameLabel.textContent = 'ชื่อคนขายขยะ (Username / Name):';
-      if (inputName) inputName.placeholder = 'เช่น testuser หรือ สมศรี';
-      if (passwordGroup) passwordGroup.style.display = 'none';
-      if (inputPassword) { inputPassword.required = false; inputPassword.value = ''; }
-    } else if (role === 'staff') {
-      cardStaff?.classList.add('selected');
-      if (nameLabel) nameLabel.textContent = 'ชื่อพนักงานเก็บขยะ (Staff Name):';
-      if (inputName) inputName.placeholder = 'เช่น สมชาย หรือ EMP-8821';
-      if (passwordGroup) passwordGroup.style.display = 'none';
-      if (inputPassword) { inputPassword.required = false; inputPassword.value = ''; }
-    } else if (role === 'admin') {
-      cardAdmin?.classList.add('selected');
-      if (nameLabel) nameLabel.textContent = 'ชื่อผู้ดูแลระบบ (Admin Username):';
-      if (inputName) inputName.placeholder = 'กรอกชื่อผู้ดูแลระบบ';
-      if (passwordGroup) passwordGroup.style.display = 'block';
-      if (inputPassword) {
-        inputPassword.required = true;
-        inputPassword.placeholder = 'กรอกรหัสผ่านผู้ดูแลระบบ';
+    if (tab === 'login') {
+      tabLogin?.classList.add('active');
+      tabRegister?.classList.remove('active');
+      if (tabLogin) {
+        tabLogin.style.borderBottom = '3px solid var(--emerald-green)';
+        tabLogin.style.color = 'var(--emerald-green)';
       }
+      if (tabRegister) {
+        tabRegister.style.borderBottom = '3px solid transparent';
+        tabRegister.style.color = 'var(--text-muted)';
+      }
+      if (formLogin) formLogin.style.display = 'block';
+      if (formRegister) formRegister.style.display = 'none';
+      if (title) title.textContent = 'เข้าสู่ระบบ EcoRecycle';
+    } else {
+      tabRegister?.classList.add('active');
+      tabLogin?.classList.remove('active');
+      if (tabRegister) {
+        tabRegister.style.borderBottom = '3px solid var(--emerald-green)';
+        tabRegister.style.color = 'var(--emerald-green)';
+      }
+      if (tabLogin) {
+        tabLogin.style.borderBottom = '3px solid transparent';
+        tabLogin.style.color = 'var(--text-muted)';
+      }
+      if (formRegister) formRegister.style.display = 'block';
+      if (formLogin) formLogin.style.display = 'none';
+      if (title) title.textContent = 'สมัครสมาชิก EcoRecycle';
     }
+    createIcons({ icons });
   };
 
-  window.openLoginModal = () => {
+  window.openLoginModal = (tab = 'login') => {
     const overlay = document.getElementById('login-modal-overlay');
     if (overlay) overlay.classList.remove('hidden');
-    let defaultRole = 'seller';
-    if (currentRole === 'employee') defaultRole = 'staff';
-    if (currentRole === 'admin') defaultRole = 'admin';
-    selectLoginRole(defaultRole);
+    window.switchAuthTab(tab);
     createIcons({ icons });
   };
 
@@ -130,97 +127,128 @@ function setupLoginModalEvents() {
     if (overlay) overlay.classList.add('hidden');
   };
 
-  window.handleLoginSubmit = async (e) => {
+  window.handleAuthLoginSubmit = async (e) => {
     e.preventDefault();
-    const inputName = document.getElementById('login-input-name')?.value.trim();
-    if (!inputName) {
-      showToast('กรุณากรอกชื่อ', 'warning');
+    const usernameInput = document.getElementById('login-input-username')?.value.trim();
+    const passwordInput = document.getElementById('login-input-password')?.value.trim();
+
+    if (!usernameInput || !passwordInput) {
+      showToast('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน', 'warning');
       return;
     }
 
     try {
-      if (pendingLoginRole === 'seller') {
-        const res = await fetch('/api/login/seller', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: inputName })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || 'ไม่สามารถเข้าสู่ระบบได้', 'error');
-          return;
-        }
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameInput, password: passwordInput })
+      });
+      const data = await res.json();
 
-        if (data.user) {
-          currentUser = data.user;
-          localStorage.setItem('ECO_USER_ID', currentUser.user_id);
-          localStorage.removeItem('ECO_STAFF_ID');
-          localStorage.removeItem('ECO_ADMIN_NAME');
-          localStorage.removeItem('ECO_ADMIN_AUTH');
-          localStorage.setItem('ECO_CURRENT_ROLE', 'seller');
-          switchRole('seller', false);
-          closeLoginModal();
-          showToast(`ยินดีต้อนรับคุณ ${currentUser.name || currentUser.username}!`, 'success');
-          await refreshAllUI();
-        }
-      } else if (pendingLoginRole === 'staff') {
-        const res = await fetch('/api/login/staff', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: inputName })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || 'ไม่สามารถเข้าสู่ระบบได้', 'error');
-          return;
-        }
+      if (!res.ok) {
+        showToast(data.error || 'เข้าสู่ระบบไม่สำเร็จ', 'error');
+        return;
+      }
 
-        if (data.staff) {
-          currentStaff = data.staff;
-          localStorage.setItem('ECO_STAFF_ID', currentStaff.staff_id);
-          localStorage.removeItem('ECO_USER_ID');
-          localStorage.removeItem('ECO_ADMIN_NAME');
-          localStorage.removeItem('ECO_ADMIN_AUTH');
-          localStorage.setItem('ECO_CURRENT_ROLE', 'employee');
-          switchRole('employee', false);
-          closeLoginModal();
-          showToast(`เข้าสู่ระบบพนักงาน: ${currentStaff.staff_name}`, 'success');
-          await refreshAllUI();
-        }
-      } else if (pendingLoginRole === 'admin') {
-        const inputPassword = document.getElementById('login-input-password')?.value.trim();
-        if (inputName.toLowerCase() !== 'admin' || inputPassword !== 'admin01') {
-          showToast('สิทธิ์ถูกปฏิเสธ: ชื่อผู้ใช้หรือรหัสผ่านผู้ดูแลระบบไม่ถูกต้อง', 'error');
-          return;
-        }
-
-        const res = await fetch('/api/login/admin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: inputName, password: inputPassword })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || 'ไม่สามารถเข้าสู่ระบบได้', 'error');
-          return;
-        }
-
-        if (data.admin) {
-          currentAdmin = data.admin;
-          localStorage.setItem('ECO_ADMIN_AUTH', 'true');
-          localStorage.setItem('ECO_ADMIN_NAME', currentAdmin.admin_name);
-          localStorage.removeItem('ECO_USER_ID');
-          localStorage.removeItem('ECO_STAFF_ID');
-          localStorage.setItem('ECO_CURRENT_ROLE', 'admin');
-          switchRole('admin', false);
-          closeLoginModal();
-          showToast(`เข้าสู่ระบบผู้ดูแลระบบ: ${currentAdmin.admin_name}`, 'success');
-          await refreshAllUI();
-        }
+      if (data.role === 'admin') {
+        currentAdmin = data.admin || { admin_name: 'admin' };
+        localStorage.setItem('ECO_ADMIN_AUTH', 'true');
+        localStorage.setItem('ECO_ADMIN_NAME', currentAdmin.admin_name);
+        localStorage.removeItem('ECO_USER_ID');
+        localStorage.removeItem('ECO_STAFF_ID');
+        localStorage.setItem('ECO_CURRENT_ROLE', 'admin');
+        switchRole('admin', false);
+        closeLoginModal();
+        showToast(`เข้าสู่ระบบผู้ดูแลระบบ: ${currentAdmin.admin_name}`, 'success');
+        await refreshAllUI();
+      } else if (data.role === 'seller') {
+        currentUser = data.user;
+        localStorage.setItem('ECO_USER_ID', currentUser.user_id);
+        localStorage.removeItem('ECO_STAFF_ID');
+        localStorage.removeItem('ECO_ADMIN_NAME');
+        localStorage.removeItem('ECO_ADMIN_AUTH');
+        localStorage.setItem('ECO_CURRENT_ROLE', 'seller');
+        switchRole('seller', false);
+        closeLoginModal();
+        showToast(`ยินดีต้อนรับคุณ ${currentUser.name || currentUser.username}!`, 'success');
+        await refreshAllUI();
+      } else if (data.role === 'staff') {
+        currentStaff = data.staff;
+        localStorage.setItem('ECO_STAFF_ID', currentStaff.staff_id);
+        localStorage.removeItem('ECO_USER_ID');
+        localStorage.removeItem('ECO_ADMIN_NAME');
+        localStorage.removeItem('ECO_ADMIN_AUTH');
+        localStorage.setItem('ECO_CURRENT_ROLE', 'employee');
+        switchRole('employee', false);
+        closeLoginModal();
+        showToast(`เข้าสู่ระบบพนักงาน: ${currentStaff.staff_name}`, 'success');
+        await refreshAllUI();
       }
     } catch (err) {
       console.error('Login error:', err);
-      showToast('เกิดข้อผิดพลาดในการเข้าสู่ระบบ', 'error');
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+  };
+
+  window.handleAuthRegisterSubmit = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('reg-input-email')?.value.trim();
+    const username = document.getElementById('reg-input-username')?.value.trim();
+    const phone = document.getElementById('reg-input-phone')?.value.trim();
+    const address = document.getElementById('reg-input-address')?.value.trim();
+    const password = document.getElementById('reg-input-password')?.value.trim();
+    const roleRadio = document.querySelector('input[name="reg-role"]:checked');
+    const role = roleRadio ? roleRadio.value : 'seller';
+
+    if (!email || !username || !phone || !address || !password) {
+      showToast('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง', 'warning');
+      return;
+    }
+
+    if (username.toLowerCase() === 'admin') {
+      showToast('ไม่อนุญาตให้ใช้ชื่อผู้ใช้งาน admin', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username, phone, address, password, role })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || 'สมัครสมาชิกไม่สำเร็จ', 'error');
+        return;
+      }
+
+      showToast(`🎉 สมัครสมาชิกสำเร็จ! เข้าสู่ระบบในฐานะ ${role === 'seller' ? 'คนขายขยะ (Seller)' : 'พนักงาน (Staff)'}`, 'success');
+
+      if (role === 'seller' && data.user) {
+        currentUser = data.user;
+        localStorage.setItem('ECO_USER_ID', currentUser.user_id);
+        localStorage.removeItem('ECO_STAFF_ID');
+        localStorage.removeItem('ECO_ADMIN_NAME');
+        localStorage.removeItem('ECO_ADMIN_AUTH');
+        localStorage.setItem('ECO_CURRENT_ROLE', 'seller');
+        switchRole('seller', false);
+        closeLoginModal();
+        await refreshAllUI();
+      } else if (role === 'staff' && data.staff) {
+        currentStaff = data.staff;
+        localStorage.setItem('ECO_STAFF_ID', currentStaff.staff_id);
+        localStorage.removeItem('ECO_USER_ID');
+        localStorage.removeItem('ECO_ADMIN_NAME');
+        localStorage.removeItem('ECO_ADMIN_AUTH');
+        localStorage.setItem('ECO_CURRENT_ROLE', 'employee');
+        switchRole('employee', false);
+        closeLoginModal();
+        await refreshAllUI();
+      }
+    } catch (err) {
+      console.error('Register error:', err);
+      showToast('เกิดข้อผิดพลาดในการลงทะเบียน', 'error');
     }
   };
 }
@@ -271,9 +299,8 @@ function setupRoleSwitcher() {
     btnAdmin.addEventListener('click', () => {
       const isAuth = localStorage.getItem('ECO_ADMIN_AUTH') === 'true';
       if (!isAuth || !currentAdmin || currentAdmin.admin_name.toLowerCase() !== 'admin') {
-        showToast('กรุณาระบุชื่อและรหัสผ่านเพื่อเข้าสู่ระบบผู้ดูแลระบบ (Admin)', 'info');
-        selectLoginRole('admin');
-        openLoginModal();
+        showToast('กรุณากรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่ระบบผู้ดูแลระบบ', 'info');
+        openLoginModal('login');
         return;
       }
       switchRole('admin');
@@ -389,6 +416,8 @@ function switchView(viewId) {
     loadUserSalesHistory();
   } else if (viewId === 'view-employee-history') {
     loadStaffSalesHistory();
+  } else if (viewId === 'view-employee-form') {
+    if (window.ensureServingCustomerDisplay) window.ensureServingCustomerDisplay();
   } else if (viewId === 'view-seller-profile' && currentUser) {
     const profileAddr = document.getElementById('profile-input-address');
     const profilePhone = document.getElementById('profile-input-phone');
@@ -462,6 +491,78 @@ function setupEmployeeFormEvents() {
     }
   }
 
+  window.resetEmployeeForm = () => {
+    ['recycle', 'organic', 'general', 'hazardous'].forEach(type => {
+      const chk = document.getElementById(`chk-emp-${type}`);
+      const input = document.getElementById(`emp-input-${type}`);
+      if (chk) chk.checked = false;
+      if (input) {
+        input.value = '';
+        input.disabled = true;
+        input.style.opacity = '0.5';
+        input.style.cursor = 'not-allowed';
+      }
+    });
+    calcEmpTotals();
+  };
+
+  window.toggleWasteType = (type) => {
+    const chk = document.getElementById(`chk-emp-${type}`);
+    const input = document.getElementById(`emp-input-${type}`);
+    if (!chk || !input) return;
+
+    if (chk.checked) {
+      input.disabled = false;
+      input.style.opacity = '1';
+      input.style.cursor = 'text';
+      input.focus();
+    } else {
+      input.value = '';
+      input.disabled = true;
+      input.style.opacity = '0.5';
+      input.style.cursor = 'not-allowed';
+    }
+    calcEmpTotals();
+  };
+
+  window.ensureServingCustomerDisplay = async () => {
+    const label = document.getElementById('form-customer-name-display');
+    if (!label) return;
+
+    if (window.currentServingReportId && window.currentServingUserName) {
+      label.textContent = `${window.currentServingUserName} (User #${window.currentServingUserId || 1}) - คิวคำขอ #${window.currentServingReportId}`;
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/pickup');
+      const data = await res.json();
+      const reports = data.reports || [];
+      const waitingReports = reports.filter(r => r.status === 'Waiting');
+      waitingReports.sort((a, b) => a.report_id - b.report_id);
+
+      let assigned = null;
+      if (currentStaff) {
+        assigned = waitingReports.find(r => Number(r.staff_id) === Number(currentStaff.staff_id));
+      }
+      if (!assigned && waitingReports.length > 0) {
+        assigned = waitingReports[0];
+      }
+
+      if (assigned) {
+        window.currentServingUserId = assigned.user_id || 1;
+        window.currentServingUserName = assigned.user_name || 'ลูกค้าทั่วไป';
+        window.currentServingReportId = assigned.report_id;
+        window.currentServingLocation = assigned.location_name || '';
+        label.textContent = `${assigned.user_name || 'ลูกค้าทั่วไป'} (User #${assigned.user_id || 1}) - คิวคำขอ #${assigned.report_id}`;
+      } else {
+        label.textContent = 'ไม่มีคิวที่กำลังให้บริการ (ยังไม่มีคำขอเรียกรถ)';
+      }
+    } catch (e) {
+      label.textContent = 'ยังไม่ได้เลือกคิวลูกค้า';
+    }
+  };
+
   window.employeeGoToLocation = (reportId, name, userId, locName) => {
     const label = document.getElementById('form-customer-name-display');
     if (label) label.textContent = `${name} (User #${userId || 1}) - คิวคำขอ #${reportId}`;
@@ -469,6 +570,9 @@ function setupEmployeeFormEvents() {
     window.currentServingUserName = name || 'ลูกค้า';
     window.currentServingReportId = reportId || null;
     window.currentServingLocation = locName || null;
+
+    // รีเซ็ตฟอร์มขยะให้ว่างเปล่าสำหรับลูกค้ารายใหม่
+    window.resetEmployeeForm();
 
     // รีเซ็ตสถานะปุ่มยืนยันให้ disabled ไว้ก่อน (ข้อ 22)
     const confirmBtn = document.getElementById('btn-emp-direct-confirm');
@@ -519,7 +623,7 @@ function setupEmployeeFormEvents() {
         showToast(data.error || 'ไม่สามารถยืนยันคิวได้', 'error');
       }
     } catch (err) {
-      console.error('Confirm queue error:', err);
+      console.error('Direct confirm error:', err);
       showToast('เกิดข้อผิดพลาดในการยืนยันคิว', 'error');
     }
   };
@@ -587,10 +691,15 @@ function setupEmployeeFormEvents() {
 
 // ข้อ 3: คำนวณเฉพาะแต้มสะสมเท่านั้น (ไม่มีเงิน) - ใช้ตัวคูณขยะ activeRates จากฐานข้อมูล
 function calcEmpTotals() {
-  const recycleKg = parseFloat(document.getElementById('emp-input-recycle')?.value) || 0;
-  const organicKg = parseFloat(document.getElementById('emp-input-organic')?.value) || 0;
-  const generalBags = parseFloat(document.getElementById('emp-input-general')?.value) || 0;
-  const hazardousItems = parseFloat(document.getElementById('emp-input-hazardous')?.value) || 0;
+  const chkRecycle = document.getElementById('chk-emp-recycle')?.checked;
+  const chkOrganic = document.getElementById('chk-emp-organic')?.checked;
+  const chkGeneral = document.getElementById('chk-emp-general')?.checked;
+  const chkHazardous = document.getElementById('chk-emp-hazardous')?.checked;
+
+  const recycleKg = chkRecycle ? (parseFloat(document.getElementById('emp-input-recycle')?.value) || 0) : 0;
+  const organicKg = chkOrganic ? (parseFloat(document.getElementById('emp-input-organic')?.value) || 0) : 0;
+  const generalBags = chkGeneral ? (parseFloat(document.getElementById('emp-input-general')?.value) || 0) : 0;
+  const hazardousItems = chkHazardous ? (parseFloat(document.getElementById('emp-input-hazardous')?.value) || 0) : 0;
 
   // คำนวณน้ำหนักเทียบเท่า (กิโลกรัม)
   const generalKg = +(generalBags * 1.5).toFixed(1);
@@ -609,14 +718,39 @@ function calcEmpTotals() {
   const scoreEl = document.getElementById('emp-total-score-display');
   if (scoreEl) scoreEl.textContent = `${totalPoints} แต้ม`;
 
-  return { recycleKg, organicKg, generalBags, generalKg, hazardousItems, hazardousKg, totalPoints, totalWeight };
+  // ตรวจสอบความถูกต้องสำหรับปุ่ม Generate QR Code
+  // ถ้าไม่กดติ๊ก หรือไม่ใส่น้ำหนักเลย จะไม่สามารถกด scan qr code ได้
+  const btnGenQR = document.getElementById('btn-emp-generate-qr');
+  const hasChecked = !!(chkRecycle || chkOrganic || chkGeneral || chkHazardous);
+  const hasWeight = totalPoints > 0;
+
+  if (btnGenQR) {
+    if (hasChecked && hasWeight) {
+      btnGenQR.disabled = false;
+      btnGenQR.style.opacity = '1';
+      btnGenQR.style.cursor = 'pointer';
+      btnGenQR.title = 'คลิกเพื่อสร้าง QR Code รับแต้ม';
+    } else {
+      btnGenQR.disabled = true;
+      btnGenQR.style.opacity = '0.5';
+      btnGenQR.style.cursor = 'not-allowed';
+      btnGenQR.title = 'กรุณาติ๊กเลือกประเภทขยะและระบุน้ำหนักก่อนสร้าง QR Code';
+    }
+  }
+
+  return { recycleKg, organicKg, generalBags, generalKg, hazardousItems, hazardousKg, totalPoints, totalWeight, hasChecked, hasWeight };
 }
 
 function generateEmployeeQR() {
   const totals = calcEmpTotals();
 
+  if (!totals.hasChecked) {
+    showToast('กรุณาติ๊กเลือกประเภทขยะที่ seller นำมาขายอย่างน้อย 1 ประเภท', 'warning');
+    return;
+  }
+
   if (totals.totalPoints <= 0) {
-    showToast('กรุณาระบุน้ำหนัก/จำนวนขยะอย่างน้อย 1 ประเภท', 'warning');
+    showToast('กรุณาระบุน้ำหนักหรือจำนวนขยะให้มากกว่า 0', 'warning');
     return;
   }
 

@@ -89,6 +89,11 @@ export function dbApiPlugin() {
 
     // Auto-migrate new columns
     try { db.prepare('ALTER TABLE user ADD COLUMN address TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE user ADD COLUMN password TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE staffs ADD COLUMN password TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE staffs ADD COLUMN username TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE staffs ADD COLUMN email TEXT').run(); } catch(e) {}
+    try { db.prepare('ALTER TABLE staffs ADD COLUMN address TEXT').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN staff_id INTEGER').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN created_at TEXT').run(); } catch(e) {}
     try { db.prepare('ALTER TABLE garbage_reports ADD COLUMN seller_decision TEXT').run(); } catch(e) {}
@@ -207,6 +212,97 @@ export function dbApiPlugin() {
         };
 
         try {
+          // 0.1 REGISTER (Seller or Staff)
+          if (pathname === '/api/register' && method === 'POST') {
+            const { email, username, phone, address, password, role } = await parseBody();
+            const cleanUser = (username || '').trim();
+            const cleanEmail = (email || '').trim();
+            const cleanPhone = (phone || '').trim();
+            const cleanAddress = (address || '').trim();
+            const cleanPass = (password || '').trim();
+            const cleanRole = (role || '').trim().toLowerCase();
+
+            if (!cleanUser || !cleanPass || !cleanEmail || !cleanRole) {
+              return sendJson({ error: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน (ชื่อผู้ใช้, รหัสผ่าน, อีเมล, บทบาท)' }, 400);
+            }
+
+            if (cleanRole === 'admin' || cleanUser.toLowerCase() === 'admin') {
+              return sendJson({ error: 'ไม่อนุญาตให้ลงทะเบียนเป็นผู้ดูแลระบบ (Admin)' }, 403);
+            }
+
+            if (cleanRole !== 'seller' && cleanRole !== 'staff') {
+              return sendJson({ error: 'บทบาทไม่ถูกต้อง ต้องเลือกเป็น Seller หรือ Staff' }, 400);
+            }
+
+            const userExist = db.prepare('SELECT * FROM user WHERE LOWER(username) = LOWER(?)').get(cleanUser);
+            const staffExist = db.prepare('SELECT * FROM staffs WHERE LOWER(username) = LOWER(?) OR LOWER(staff_name) = LOWER(?)').get(cleanUser, cleanUser);
+            const adminExist = db.prepare('SELECT * FROM admins WHERE LOWER(admin_name) = LOWER(?)').get(cleanUser);
+            if (userExist || staffExist || adminExist) {
+              return sendJson({ error: `ชื่อผู้ใช้งาน "${cleanUser}" ถูกใช้งานแล้ว กรุณาเลือกชื่ออื่น` }, 409);
+            }
+
+            if (cleanRole === 'seller') {
+              const resInsert = db.prepare(
+                'INSERT INTO user (username, name, email, phone, address, password, points) VALUES (?, ?, ?, ?, ?, ?, ?)'
+              ).run(cleanUser, cleanUser, cleanEmail, cleanPhone, cleanAddress, cleanPass, 0);
+              const newUser = db.prepare('SELECT * FROM user WHERE user_id = ?').get(resInsert.lastInsertRowid);
+              return sendJson({ success: true, role: 'seller', user: newUser });
+            } else if (cleanRole === 'staff') {
+              const staffPhone = cleanPhone || '0123456789';
+              const resInsert = db.prepare(
+                'INSERT INTO staffs (staff_name, username, email, phone, address, password) VALUES (?, ?, ?, ?, ?, ?)'
+              ).run(cleanUser, cleanUser, cleanEmail, staffPhone, cleanAddress, cleanPass);
+              const newStaff = db.prepare('SELECT * FROM staffs WHERE staff_id = ?').get(resInsert.lastInsertRowid);
+              return sendJson({ success: true, role: 'staff', staff: newStaff });
+            }
+          }
+
+          // 0.2 UNIFIED LOGIN (Admin, Seller, Staff)
+          if (pathname === '/api/login' && method === 'POST') {
+            const { username, password } = await parseBody();
+            const cleanUser = (username || '').trim();
+            const cleanPass = (password || '').trim();
+
+            if (!cleanUser || !cleanPass) {
+              return sendJson({ error: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' }, 400);
+            }
+
+            if (cleanUser.toLowerCase() === 'admin' && cleanPass === 'admin01') {
+              let admin = db.prepare('SELECT * FROM admins WHERE LOWER(admin_name) = ?').get('admin');
+              if (!admin) {
+                const resInsert = db.prepare('INSERT INTO admins (admin_name) VALUES (?)').run('admin');
+                admin = db.prepare('SELECT * FROM admins WHERE admin_id = ?').get(resInsert.lastInsertRowid);
+              }
+              return sendJson({ success: true, role: 'admin', admin });
+            }
+
+            const user = db.prepare('SELECT * FROM user WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?)').get(cleanUser, cleanUser);
+            if (user) {
+              if (user.password && user.password !== cleanPass) {
+                return sendJson({ error: 'รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง' }, 401);
+              }
+              if (!user.password) {
+                db.prepare('UPDATE user SET password = ? WHERE user_id = ?').run(cleanPass, user.user_id);
+                user.password = cleanPass;
+              }
+              return sendJson({ success: true, role: 'seller', user });
+            }
+
+            const staff = db.prepare('SELECT * FROM staffs WHERE LOWER(username) = LOWER(?) OR LOWER(staff_name) = LOWER(?)').get(cleanUser, cleanUser);
+            if (staff) {
+              if (staff.password && staff.password !== cleanPass) {
+                return sendJson({ error: 'รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง' }, 401);
+              }
+              if (!staff.password) {
+                db.prepare('UPDATE staffs SET password = ? WHERE staff_id = ?').run(cleanPass, staff.staff_id);
+                staff.password = cleanPass;
+              }
+              return sendJson({ success: true, role: 'staff', staff });
+            }
+
+            return sendJson({ error: 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ กรุณาสมัครสมาชิกก่อนเข้าสู่ระบบ' }, 404);
+          }
+
           // 1. LOGIN / USER (Seller) - 1 บทบาทต่อ 1 ชื่อ
           if (pathname === '/api/login/seller' && method === 'POST') {
             const { name } = await parseBody();

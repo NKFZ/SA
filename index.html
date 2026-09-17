@@ -417,50 +417,54 @@
           <i data-lucide="edit-3"></i> กรอกประเมินขยะ 4 ประเภท (Form)
         </div>
         <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:14px;">
-          ลูกค้าที่กำลังให้บริการ: <strong id="form-customer-name-display" style="color:var(--navy-dark);">Sek Loso (User #1)</strong>
+          ลูกค้าที่กำลังให้บริการ: <strong id="form-customer-name-display" style="color:var(--navy-dark);">ยังไม่ได้เลือกคิวลูกค้า</strong>
         </p>
 
-        <!-- 4 Waste Inputs (Figma Style) -->
+        <!-- 4 Waste Inputs with Checkbox (Figma Style) -->
         <div class="figma-form-item">
-          <div class="figma-form-label">
+          <div class="figma-form-label" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="chk-emp-recycle" class="figma-checkbox" style="width:18px; height:18px; accent-color:var(--emerald-green); cursor:pointer;" onchange="toggleWasteType('recycle')" />
             <div class="dot-indicator bg-recycle"></div>
-            <span>Recycle Waste (KG)</span>
+            <label for="chk-emp-recycle" style="cursor:pointer; font-weight:700; font-size:0.9rem; color:var(--navy-dark); user-select:none;">Recycle Waste (KG)</label>
           </div>
-          <div>
-            <input type="number" id="emp-input-recycle" class="figma-input-box" value="2.5" step="0.5" min="0" onchange="calcEmpTotals()" />
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="number" id="emp-input-recycle" class="figma-input-box" placeholder="0" step="0.5" min="0" disabled oninput="calcEmpTotals()" style="opacity:0.5; cursor:not-allowed;" />
             <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">KG</span>
           </div>
         </div>
 
         <div class="figma-form-item">
-          <div class="figma-form-label">
+          <div class="figma-form-label" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="chk-emp-organic" class="figma-checkbox" style="width:18px; height:18px; accent-color:var(--emerald-green); cursor:pointer;" onchange="toggleWasteType('organic')" />
             <div class="dot-indicator bg-organic"></div>
-            <span>Organic Waste (KG)</span>
+            <label for="chk-emp-organic" style="cursor:pointer; font-weight:700; font-size:0.9rem; color:var(--navy-dark); user-select:none;">Organic Waste (KG)</label>
           </div>
-          <div>
-            <input type="number" id="emp-input-organic" class="figma-input-box" value="1.0" step="0.5" min="0" onchange="calcEmpTotals()" />
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="number" id="emp-input-organic" class="figma-input-box" placeholder="0" step="0.5" min="0" disabled oninput="calcEmpTotals()" style="opacity:0.5; cursor:not-allowed;" />
             <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">KG</span>
           </div>
         </div>
 
         <div class="figma-form-item">
-          <div class="figma-form-label">
+          <div class="figma-form-label" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="chk-emp-general" class="figma-checkbox" style="width:18px; height:18px; accent-color:var(--emerald-green); cursor:pointer;" onchange="toggleWasteType('general')" />
             <div class="dot-indicator bg-general"></div>
-            <span>General Waste (Bags)</span>
+            <label for="chk-emp-general" style="cursor:pointer; font-weight:700; font-size:0.9rem; color:var(--navy-dark); user-select:none;">General Waste (Bags)</label>
           </div>
-          <div>
-            <input type="number" id="emp-input-general" class="figma-input-box" value="3" step="1" min="0" onchange="calcEmpTotals()" />
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="number" id="emp-input-general" class="figma-input-box" placeholder="0" step="1" min="0" disabled oninput="calcEmpTotals()" style="opacity:0.5; cursor:not-allowed;" />
             <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">Bags</span>
           </div>
         </div>
 
         <div class="figma-form-item">
-          <div class="figma-form-label">
+          <div class="figma-form-label" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="chk-emp-hazardous" class="figma-checkbox" style="width:18px; height:18px; accent-color:var(--emerald-green); cursor:pointer;" onchange="toggleWasteType('hazardous')" />
             <div class="dot-indicator bg-hazardous"></div>
-            <span>Hazardous Waste (Items)</span>
+            <label for="chk-emp-hazardous" style="cursor:pointer; font-weight:700; font-size:0.9rem; color:var(--navy-dark); user-select:none;">Hazardous Waste (Items)</label>
           </div>
-          <div>
-            <input type="number" id="emp-input-hazardous" class="figma-input-box" value="2" step="1" min="0" onchange="calcEmpTotals()" />
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="number" id="emp-input-hazardous" class="figma-input-box" placeholder="0" step="1" min="0" disabled oninput="calcEmpTotals()" style="opacity:0.5; cursor:not-allowed;" />
             <span style="font-weight:700; font-size:0.85rem; color:var(--navy-dark);">Items</span>
           </div>
         </div>
@@ -468,7 +472,7 @@
         <!-- Total Score Box (Calculated for Customer - ข้อ 3: ลูกค้าได้เฉพาะแต้ม ไม่มีเงิน) -->
         <div class="figma-card text-center" style="margin-top:16px;">
           <div style="font-size:0.9rem; font-weight:700; color:var(--navy-dark);">แต้มสะสมที่ลูกค้าจะได้รับ (Points Only):</div>
-          <h1 style="color:var(--emerald-green); font-size:2.4rem;" id="emp-total-score-display">375 แต้ม</h1>
+          <h1 style="color:var(--emerald-green); font-size:2.4rem;" id="emp-total-score-display">0 แต้ม</h1>
           <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">✨ สะสมแต้มอย่างเดียวเพื่อนำไปแลกของรางวัล</p>
         </div>
 
@@ -481,7 +485,7 @@
         </div>
 
         <div style="display:flex; gap:10px; margin-top:12px;">
-          <button class="btn-figma-primary" id="btn-emp-generate-qr" style="flex:1;">
+          <button class="btn-figma-primary" id="btn-emp-generate-qr" style="flex:1; opacity:0.5; cursor:not-allowed;" disabled title="กรุณาเลือกประเภทขยะและระบุน้ำหนักก่อนสร้าง QR Code">
             <i data-lucide="qr-code"></i> Generate QR Code
           </button>
           <button type="button" class="btn-figma-secondary" id="btn-emp-direct-confirm" onclick="handleDirectConfirmQueue()" style="flex:1; opacity:0.6; cursor:not-allowed;" disabled title="ยืนยันคิว (ปลดล็อคเมื่อลูกค้ากดยืนยันหรือปฏิเสธแล้ว)">
@@ -837,51 +841,110 @@
       </div>
     </nav>
 
-    <!-- Simple Login Modal / Screen Overlay (ข้อ 2: เลือกว่าฝั่งไหน + กรอกชื่อ) -->
+    <!-- Authentication Modal (Login & Register) -->
     <div id="login-modal-overlay" class="login-overlay hidden">
-      <div class="login-card-figma">
+      <div class="login-card-figma" style="max-width: 440px;">
         <div class="login-logo-circle">
           <i data-lucide="recycle" style="width:36px; height:36px;"></i>
         </div>
-        <h2>เข้าสู่ระบบ EcoRecycle</h2>
-        <p style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">
-          กรุณาเลือกประเภทผู้ใช้งาน และกรอกชื่อเพื่อเข้าใช้งาน (ไม่ต้องใส่รหัสผ่าน)
-        </p>
-
-        <!-- Role Choice Buttons -->
-        <div class="role-choice-group">
-          <div class="role-choice-card selected" id="login-choice-seller" onclick="selectLoginRole('seller')">
-            <i data-lucide="user"></i>
-            <span>คนขายขยะ (Seller)</span>
-          </div>
-          <div class="role-choice-card" id="login-choice-staff" onclick="selectLoginRole('staff')">
-            <i data-lucide="truck"></i>
-            <span>พนักงาน (Staff)</span>
-          </div>
-          <div class="role-choice-card" id="login-choice-admin" onclick="selectLoginRole('admin')">
-            <i data-lucide="shield"></i>
-            <span>ผู้ดูแล (Admin)</span>
-          </div>
+        <h2 id="auth-modal-title" style="color:var(--navy-dark); font-size:1.4rem; margin-bottom:4px;">เข้าสู่ระบบ EcoRecycle</h2>
+        
+        <!-- Auth Tabs (Login / Register) -->
+        <div style="display:flex; border-bottom:2px solid #e2e8f0; margin:14px 0 18px 0;">
+          <button type="button" id="tab-btn-login" class="auth-tab active" onclick="switchAuthTab('login')" style="flex:1; padding:10px; font-weight:700; border:none; background:none; cursor:pointer; border-bottom:3px solid var(--emerald-green); color:var(--emerald-green); font-size:0.95rem;">
+            เข้าสู่ระบบ (Login)
+          </button>
+          <button type="button" id="tab-btn-register" class="auth-tab" onclick="switchAuthTab('register')" style="flex:1; padding:10px; font-weight:700; border:none; background:none; cursor:pointer; border-bottom:3px solid transparent; color:var(--text-muted); font-size:0.95rem;">
+            สมัครสมาชิก (Register)
+          </button>
         </div>
 
-        <!-- Name Input Form -->
-        <form id="login-form" onsubmit="handleLoginSubmit(event)" style="text-align:left;">
-          <label id="login-name-label" style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">
-            ชื่อคนขายขยะ (Username / Name):
-          </label>
-          <input type="text" id="login-input-name" class="login-input-field" placeholder="กรอกชื่อผู้ใช้งาน" required />
-
-          <!-- Password input (for Admin only) -->
-          <div id="login-password-group" style="display:none; margin-top:12px;">
+        <!-- 1. LOGIN FORM -->
+        <form id="auth-login-form" onsubmit="handleAuthLoginSubmit(event)" style="text-align:left;">
+          <div style="margin-bottom:12px;">
             <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
-              รหัสผ่านผู้ดูแลระบบ (Admin Password):
+              ชื่อผู้ใช้งาน (Username):
             </label>
-            <input type="password" id="login-input-password" class="login-input-field" placeholder="กรอกรหัสผ่านผู้ดูแลระบบ" autocomplete="current-password" />
+            <input type="text" id="login-input-username" class="login-input-field" placeholder="กรอกชื่อผู้ใช้งาน" required />
           </div>
 
-          <button type="submit" class="btn-figma-primary margin-top-lg">
-            <i data-lucide="log-in"></i> เข้าใช้งานทันที
+          <div style="margin-bottom:14px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              รหัสผ่าน (Password):
+            </label>
+            <input type="password" id="login-input-password" class="login-input-field" placeholder="กรอกรหัสผ่าน" required />
+          </div>
+
+          <button type="submit" class="btn-figma-primary" style="width:100%; padding:12px;">
+            <i data-lucide="log-in"></i> เข้าสู่ระบบ
           </button>
+
+          <p style="text-align:center; font-size:0.85rem; color:var(--text-muted); margin-top:14px;">
+            ยังไม่มีบัญชีผู้ใช้งาน? <a href="#" onclick="switchAuthTab('register'); return false;" style="color:var(--emerald-green); font-weight:700; text-decoration:none;">สมัครสมาชิกที่นี่</a>
+          </p>
+        </form>
+
+        <!-- 2. REGISTER FORM -->
+        <form id="auth-register-form" onsubmit="handleAuthRegisterSubmit(event)" style="text-align:left; display:none;">
+          <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              อีเมล (Email):
+            </label>
+            <input type="email" id="reg-input-email" class="login-input-field" placeholder="กรอกอีเมลของคุณ" required />
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              ชื่อผู้ใช้งาน (Username):
+            </label>
+            <input type="text" id="reg-input-username" class="login-input-field" placeholder="ตั้งชื่อผู้ใช้งาน" required />
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              เบอร์โทรศัพท์ (Phone):
+            </label>
+            <input type="tel" id="reg-input-phone" class="login-input-field" placeholder="กรอกเบอร์โทรศัพท์" required />
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              ที่อยู่ (Address):
+            </label>
+            <textarea id="reg-input-address" class="login-input-field" rows="2" placeholder="กรอกที่อยู่ของคุณ" required style="resize:vertical;"></textarea>
+          </div>
+
+          <div style="margin-bottom:12px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
+              รหัสผ่าน (Password):
+            </label>
+            <input type="password" id="reg-input-password" class="login-input-field" placeholder="กำหนดรหัสผ่าน" required />
+          </div>
+
+          <!-- Role Choice (Staff or Seller only - NO admin) -->
+          <div style="margin-bottom:16px;">
+            <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:6px;">
+              เลือกบทบาทของคุณ (Role):
+            </label>
+            <div style="display:flex; gap:10px;">
+              <label style="flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:10px; cursor:pointer; background:#fff;" id="reg-role-seller-label">
+                <input type="radio" name="reg-role" value="seller" checked style="accent-color:var(--emerald-green);" />
+                <span style="font-size:0.85rem;"><strong>คนขายขยะ (Seller)</strong></span>
+              </label>
+              <label style="flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:10px; cursor:pointer; background:#fff;" id="reg-role-staff-label">
+                <input type="radio" name="reg-role" value="staff" style="accent-color:var(--emerald-green);" />
+                <span style="font-size:0.85rem;"><strong>พนักงาน (Staff)</strong></span>
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-figma-primary" style="width:100%; padding:12px;">
+            <i data-lucide="user-plus"></i> สมัครสมาชิก
+          </button>
+
+          <p style="text-align:center; font-size:0.85rem; color:var(--text-muted); margin-top:14px;">
+            มีบัญชีผู้ใช้งานแล้ว? <a href="#" onclick="switchAuthTab('login'); return false;" style="color:var(--emerald-green); font-weight:700; text-decoration:none;">เข้าสู่ระบบที่นี่</a>
+          </p>
         </form>
 
         <button type="button" class="btn-figma-secondary margin-top-md" style="font-size:0.8rem; padding:6px 14px;" onclick="closeLoginModal()">
