@@ -197,7 +197,7 @@ app.post('/api/register', async (req, res) => {
     const { email, username, phone, address, password, role } = req.body;
     const cleanUser = (username || '').trim();
     const cleanEmail = (email || '').trim();
-    const cleanPhone = (phone || '').trim();
+    const cleanPhone = (phone || '').replace(/\D/g, '').slice(0, 10);
     const cleanAddress = (address || '').trim();
     const cleanPass = (password || '').trim();
     const cleanRole = (role || '').trim().toLowerCase();
@@ -385,7 +385,7 @@ app.post('/api/staff/phone', async (req, res) => {
     if (!staffId) {
       return res.status(400).json({ error: 'Missing staffId' });
     }
-    const phoneVal = (phone || '').trim() || '0123456789';
+    const phoneVal = (phone || '').replace(/\D/g, '').slice(0, 10) || '0123456789';
     await execute('UPDATE staffs SET phone = ? WHERE staff_id = ?', [phoneVal, staffId]);
     const staff = await queryOne('SELECT * FROM staffs WHERE staff_id = ?', [staffId]);
     res.json({ success: true, staff });
@@ -828,7 +828,8 @@ app.post('/api/pickup', async (req, res) => {
       await execute('UPDATE user SET address = ? WHERE user_id = ?', [locationName.trim(), uid]);
     }
     if (phone && phone.trim()) {
-      await execute('UPDATE user SET phone = ? WHERE user_id = ?', [phone.trim(), uid]);
+      const cleanP = phone.replace(/\D/g, '').slice(0, 10);
+      await execute('UPDATE user SET phone = ? WHERE user_id = ?', [cleanP, uid]);
     }
 
     let loc = await queryOne('SELECT * FROM locations WHERE location_name = ?', [locationName]);

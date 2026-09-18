@@ -217,7 +217,7 @@ export function dbApiPlugin() {
             const { email, username, phone, address, password, role } = await parseBody();
             const cleanUser = (username || '').trim();
             const cleanEmail = (email || '').trim();
-            const cleanPhone = (phone || '').trim();
+            const cleanPhone = (phone || '').replace(/\D/g, '').slice(0, 10);
             const cleanAddress = (address || '').trim();
             const cleanPass = (password || '').trim();
             const cleanRole = (role || '').trim().toLowerCase();
@@ -383,7 +383,7 @@ export function dbApiPlugin() {
             if (!staffId) {
               return sendJson({ error: 'Missing staffId' }, 400);
             }
-            const phoneVal = (phone || '').trim() || '0123456789';
+            const phoneVal = (phone || '').replace(/\D/g, '').slice(0, 10) || '0123456789';
             db.prepare('UPDATE staffs SET phone = ? WHERE staff_id = ?').run(phoneVal, staffId);
             const staff = db.prepare('SELECT * FROM staffs WHERE staff_id = ?').get(staffId);
             return sendJson({ success: true, staff });
@@ -609,7 +609,8 @@ export function dbApiPlugin() {
               db.prepare('UPDATE user SET address = ? WHERE user_id = ?').run(address.trim(), userId);
             }
             if (phone !== undefined) {
-              db.prepare('UPDATE user SET phone = ? WHERE user_id = ?').run(phone.trim(), userId);
+              const cleanP = (phone || '').replace(/\D/g, '').slice(0, 10);
+              db.prepare('UPDATE user SET phone = ? WHERE user_id = ?').run(cleanP, userId);
             }
             const user = db.prepare('SELECT * FROM user WHERE user_id = ?').get(userId);
             return sendJson({ success: true, user });
@@ -734,7 +735,8 @@ export function dbApiPlugin() {
               db.prepare('UPDATE user SET address = ? WHERE user_id = ?').run(locationName.trim(), uid);
             }
             if (phone && phone.trim()) {
-              db.prepare('UPDATE user SET phone = ? WHERE user_id = ?').run(phone.trim(), uid);
+              const cleanP = phone.replace(/\D/g, '').slice(0, 10);
+              db.prepare('UPDATE user SET phone = ? WHERE user_id = ?').run(cleanP, uid);
             }
 
             let loc = db.prepare("SELECT * FROM locations WHERE location_name = ?").get(locationName);

@@ -179,7 +179,7 @@
             </div>
             <div class="figma-form-item">
               <span class="figma-form-label">📞 เบอร์โทรศัพท์:</span>
-              <input type="tel" id="input-pickup-phone" class="figma-input-box" style="width:160px;" placeholder="เช่น 0812345678" required />
+              <input type="tel" id="input-pickup-phone" class="figma-input-box" style="width:160px;" placeholder="เช่น 0812345678" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" required />
             </div>
             <button type="submit" id="btn-submit-pickup" class="btn-figma-primary margin-top-md">
               <i data-lucide="send"></i> ยืนยันเรียกรถรับขยะ (บันทึกลงระบบ)
@@ -202,18 +202,11 @@
           <div id="qr-reader" style="width:100%;"></div>
         </div>
 
-        <!-- Scanner Controls & Instant Simulator -->
+        <!-- Scanner Controls -->
         <div class="figma-card text-center">
           <div class="margin-top-sm">
             <button class="btn-figma-secondary" id="btn-toggle-camera-seller">
               <i data-lucide="camera"></i> เปิด/ปิด กล้องสแกน
-            </button>
-          </div>
-
-          <div style="margin-top:18px; padding-top:14px; border-top:2px dashed var(--navy-dark);">
-            <p style="font-size:0.85rem; font-weight:700; color:var(--navy-dark);">⚡ ทดสอบสแกน QR Code ในเครื่อง (Simulator)</p>
-            <button class="btn-figma-primary margin-top-md" id="btn-simulate-scan-seller">
-              <i data-lucide="zap"></i> จำลองสแกนขยะ +450 แต้ม (บันทึก DB)
             </button>
           </div>
         </div>
@@ -345,7 +338,7 @@
           </div>
           <div class="figma-form-item">
             <span class="figma-form-label">📞 เบอร์โทรศัพท์:</span>
-            <input type="tel" id="profile-input-phone" class="figma-input-box" style="width:100%;" placeholder="เช่น 0812345678" />
+            <input type="tel" id="profile-input-phone" class="figma-input-box" style="width:100%;" placeholder="เช่น 0812345678 (10 หลัก)" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" />
           </div>
           <button type="button" class="btn-figma-primary margin-top-md" onclick="saveUserAddressFromProfile()">
             <i data-lucide="save"></i> บันทึกข้อมูลที่อยู่เริ่มต้น
@@ -392,8 +385,8 @@
             <label style="font-size:0.8rem; color:rgba(255,255,255,0.9); font-weight:700; display:block; margin-bottom:4px;">
               📞 เบอร์โทรศัพท์พนักงาน (สำหรับติดต่อลูกค้า):
             </label>
-            <div style="display:flex; gap:8px;">
-              <input type="tel" id="staff-phone-input" class="figma-input-box" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.3); font-size:0.9rem;" value="0123456789" placeholder="0123456789" />
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input type="tel" id="staff-phone-input" class="figma-input-box" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.3); font-size:0.95rem; width:150px; min-width:145px; text-align:center; letter-spacing:0.5px;" value="0123456789" placeholder="0123456789" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" />
               <button type="button" class="btn-figma-primary" onclick="saveStaffPhone()" style="width:auto; padding:6px 14px; font-size:0.8rem; white-space:nowrap; background:var(--lime-accent); color:var(--navy-dark);">
                 <i data-lucide="save" style="width:14px; height:14px;"></i> บันทึกเบอร์
               </button>
@@ -900,7 +893,7 @@
             <label style="font-size:0.85rem; font-weight:700; color:var(--navy-dark); display:block; margin-bottom:4px;">
               เบอร์โทรศัพท์ (Phone):
             </label>
-            <input type="tel" id="reg-input-phone" class="login-input-field" placeholder="กรอกเบอร์โทรศัพท์" required />
+            <input type="tel" id="reg-input-phone" class="login-input-field" placeholder="กรอกเบอร์โทรศัพท์ (10 หลัก)" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" required />
           </div>
 
           <div style="margin-bottom:10px;" id="reg-group-address">

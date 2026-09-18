@@ -35,6 +35,7 @@ async function initApp() {
   setupEmployeeFormEvents();
   setupSellerPickupForm();
   setupLoginModalEvents();
+  setupPhoneInputsRestrictions();
 
   // Auto load existing session or show login
   const savedUserId = localStorage.getItem('ECO_USER_ID');
@@ -229,6 +230,12 @@ function setupLoginModalEvents() {
         showToast('กรุณากรอกข้อมูลให้ครบถ้วน (อีเมล, ชื่อผู้ใช้งาน, เบอร์โทรศัพท์, รหัสผ่าน)', 'warning');
         return;
       }
+    }
+
+    // ตรวจสอบเบอร์โทรศัพท์ต้องมี 10 หลักพอดี
+    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+      showToast('กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก (เฉพาะตัวเลข 0-9)', 'warning');
+      return;
     }
 
     if (username.toLowerCase() === 'admin') {
@@ -824,6 +831,72 @@ function startQRTimer() {
 }
 
 /* ==========================================================================
+   Phone Input Restrictions (เฉพาะตัวเลข 0-9 และจำกัดไม่เกิน 10 หลักทุกช่อง)
+   ========================================================================== */
+function setupPhoneInputsRestrictions() {
+  const phoneSelectors = [
+    '#input-pickup-phone',
+    '#profile-input-phone',
+    '#staff-phone-input',
+    '#reg-input-phone',
+    'input[type="tel"]'
+  ];
+
+  const applyToInput = (input) => {
+    if (!input) return;
+    input.setAttribute('maxlength', '10');
+    input.setAttribute('inputmode', 'numeric');
+    input.setAttribute('pattern', '[0-9]{10}');
+
+    input.addEventListener('input', (e) => {
+      const val = e.target.value;
+      const digitsOnly = val.replace(/\D/g, '').slice(0, 10);
+      if (val !== digitsOnly) {
+        e.target.value = digitsOnly;
+      }
+    });
+
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+      const digitsOnly = pasted.replace(/\D/g, '').slice(0, 10);
+      const start = input.selectionStart || 0;
+      const end = input.selectionEnd || 0;
+      const current = input.value;
+      const next = (current.slice(0, start) + digitsOnly + current.slice(end)).replace(/\D/g, '').slice(0, 10);
+      input.value = next;
+    });
+
+    input.addEventListener('keypress', (e) => {
+      if (!/[0-9]/.test(e.key) && e.key !== 'Enter') {
+        e.preventDefault();
+      }
+    });
+  };
+
+  document.querySelectorAll(phoneSelectors.join(',')).forEach(applyToInput);
+
+  // Global capture-phase delegation to guarantee no non-digits or >10 digits in any phone input
+  document.addEventListener('input', (e) => {
+    if (e.target && (e.target.matches('input[type="tel"]') || e.target.id === 'staff-phone-input' || e.target.id === 'reg-input-phone' || e.target.id === 'input-pickup-phone' || e.target.id === 'profile-input-phone')) {
+      const raw = e.target.value;
+      const digitsOnly = raw.replace(/\D/g, '').slice(0, 10);
+      if (raw !== digitsOnly) {
+        e.target.value = digitsOnly;
+      }
+    }
+  }, true);
+
+  document.addEventListener('keypress', (e) => {
+    if (e.target && (e.target.matches('input[type="tel"]') || e.target.id === 'staff-phone-input' || e.target.id === 'reg-input-phone' || e.target.id === 'input-pickup-phone' || e.target.id === 'profile-input-phone')) {
+      if (!/[0-9]/.test(e.key) && e.key !== 'Enter') {
+        e.preventDefault();
+      }
+    }
+  }, true);
+}
+
+/* ==========================================================================
    Seller Logic (Pickup Reports & Redemptions from DB)
    ========================================================================== */
 function setupSellerPickupForm() {
@@ -834,6 +907,10 @@ function setupSellerPickupForm() {
     const phone = document.getElementById('input-pickup-phone')?.value;
     if (!address || !address.trim()) {
       showToast('กรุณากรอกที่อยู่ก่อนกดบันทึก', 'warning');
+      return;
+    }
+    if (phone && phone.trim() && (phone.trim().length !== 10 || !/^\d{10}$/.test(phone.trim()))) {
+      showToast('กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก (เฉพาะตัวเลข 0-9)', 'warning');
       return;
     }
 
@@ -868,6 +945,10 @@ function setupSellerPickupForm() {
       showToast('กรุณากรอกที่อยู่ก่อนกดบันทึก', 'warning');
       return;
     }
+    if (phone && phone.trim() && (phone.trim().length !== 10 || !/^\d{10}$/.test(phone.trim()))) {
+      showToast('กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก (เฉพาะตัวเลข 0-9)', 'warning');
+      return;
+    }
 
     try {
       const res = await fetch('/api/user/address', {
@@ -899,6 +980,11 @@ function setupSellerPickupForm() {
 
     if (!address || !address.trim()) {
       showToast('กรุณากรอกที่อยู่นัดหมาย', 'warning');
+      return;
+    }
+
+    if (!phone || phone.trim().length !== 10 || !/^\d{10}$/.test(phone.trim())) {
+      showToast('กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก (เฉพาะตัวเลข 0-9)', 'warning');
       return;
     }
 
@@ -2242,8 +2328,8 @@ window.saveStaffPhone = async () => {
   }
   const phoneInput = document.getElementById('staff-phone-input');
   const phoneVal = phoneInput ? phoneInput.value.trim() : '';
-  if (!phoneVal) {
-    showToast('กรุณากรอกเบอร์โทรศัพท์', 'warning');
+  if (!phoneVal || phoneVal.length !== 10 || !/^\d{10}$/.test(phoneVal)) {
+    showToast('กรุณากรอกเบอร์โทรศัพท์พนักงานให้ครบ 10 หลัก (เฉพาะตัวเลข 0-9)', 'warning');
     return;
   }
 
